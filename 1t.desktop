@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Version=1.0
+Name=1t
+GenericName=Terminal Emulator
+Comment=QT6 Terminal Emulator
+Exec=1t %F
+Icon=1t.png
+Terminal=false
+Categories=System;TerminalEmulator;
+MimeType=application/x-shellscript;
