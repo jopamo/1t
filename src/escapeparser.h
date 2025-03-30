@@ -3,42 +3,63 @@
 
 #include <QObject>
 #include <QByteArray>
-#include <QChar>
-#include <QVector>
-#include "terminalwidget.h"
 
-class EscapeSequenceParser : public QObject {
+class TerminalWidget;
+
+class EscapeSequenceParser : public QObject
+{
     Q_OBJECT
 
-   public:
+public:
     explicit EscapeSequenceParser(TerminalWidget* widget, QObject* parent = nullptr);
 
     void feed(const QByteArray& data);
 
-   private:
-    enum class State { Normal, Esc, Csi, Osc };
+private:
 
-    State m_state{State::Normal};
-    bool m_privateMode{false};
-    bool m_oscEscape{false};
-    QVector<int> m_params;
-    QByteArray m_paramString;
-    QByteArray m_oscBuffer;
+    enum class State {
+        Normal,
+        Esc,
+        Csi,
+        Osc
+    };
+
+    State m_state { State::Normal };
+
     TerminalWidget* m_widget;
 
-    int m_savedRow{0};
-    int m_savedCol{0};
+    bool m_privateMode { false };
+    bool m_oscEscape { false };
+    QByteArray m_paramString;
+    QVector<int> m_params;
+    QByteArray m_oscBuffer;
+
+    int m_savedRow { 0 };
+    int m_savedCol { 0 };
+
+private:
 
     void processByte(unsigned char b);
+
+    void handleNormalByte(unsigned char b);
+    void handleEscByte(unsigned char b);
+    void handleCsiByte(unsigned char b);
+    void handleOscByte(unsigned char b);
+
     void handleCsiCommand(unsigned char cmd);
     void handleOscCommand();
+
+    void storeParam();
+
     void doFullReset();
+
     void cursorUp(int n);
     void cursorDown(int n);
     void cursorRight(int n);
     void cursorLeft(int n);
 
-    void storeParam();
+    void changeState(State newState);
+    void resetState();
 };
 
-#endif  // ESCAPEPARSER_H
+#endif
