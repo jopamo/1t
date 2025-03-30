@@ -1,6 +1,5 @@
 #include "escapeparser.h"
 #include "terminalwidget.h"
-#include "debug.h"
 
 #include <unistd.h>
 #include <pty.h>
@@ -11,17 +10,9 @@
 #include <cstdlib>
 
 EscapeSequenceParser::EscapeSequenceParser(TerminalWidget* widget, QObject* parent)
-    : QObject(parent), m_widget(widget) {
-    if (g_debug) {
-        qDebug() << "EscapeSequenceParser initialized with widget";
-    }
-}
+    : QObject(parent), m_widget(widget) {}
 
 void EscapeSequenceParser::feed(const QByteArray& data) {
-    if (g_debug) {
-        qDebug() << "feed called with data of size" << data.size();
-    }
-
     for (unsigned char c : data) {
         processByte(c);
     }
@@ -31,17 +22,10 @@ void EscapeSequenceParser::feed(const QByteArray& data) {
 }
 
 void EscapeSequenceParser::processByte(unsigned char b) {
-    if (g_debug) {
-        qDebug() << "processByte called with byte" << QString::number(b, 16);
-    }
-
     switch (m_state) {
         case State::Normal:
             if (b == 0x1B) {
                 m_state = State::Esc;
-                if (g_debug) {
-                    qDebug() << "Switching to Esc state";
-                }
             }
             else if (b == 0x08) {
                 cursorLeft(1);
@@ -66,16 +50,10 @@ void EscapeSequenceParser::processByte(unsigned char b) {
                 m_params.clear();
                 m_privateMode = false;
                 m_paramString.clear();
-                if (g_debug) {
-                    qDebug() << "CSI sequence started";
-                }
             }
             else if (b == ']') {
                 m_state = State::Osc;
                 m_oscBuffer.clear();
-                if (g_debug) {
-                    qDebug() << "OSC sequence started";
-                }
             }
             else if (b == 'c') {
                 doFullReset();
@@ -152,10 +130,6 @@ void EscapeSequenceParser::processByte(unsigned char b) {
 }
 
 void EscapeSequenceParser::handleCsiCommand(unsigned char cmd) {
-    if (g_debug) {
-        qDebug() << "handleCsiCommand called with cmd" << cmd;
-    }
-
     if (m_params.empty()) {
         m_params.push_back(1);
     }
@@ -240,10 +214,6 @@ void EscapeSequenceParser::handleCsiCommand(unsigned char cmd) {
 }
 
 void EscapeSequenceParser::handleOscCommand() {
-    if (g_debug) {
-        qDebug() << "handleOscCommand called with oscBuffer" << m_oscBuffer;
-    }
-
     auto parts = m_oscBuffer.split(';');
     if (!parts.isEmpty()) {
         int ps = parts[0].toInt();
@@ -263,10 +233,6 @@ void EscapeSequenceParser::handleOscCommand() {
 }
 
 void EscapeSequenceParser::storeParam() {
-    if (g_debug) {
-        qDebug() << "storeParam called with paramString" << m_paramString;
-    }
-
     if (!m_paramString.isEmpty()) {
         bool ok;
         int param = m_paramString.toInt(&ok);
@@ -278,16 +244,11 @@ void EscapeSequenceParser::storeParam() {
 }
 
 void EscapeSequenceParser::doFullReset() {
-    if (g_debug) {
-        qDebug() << "doFullReset called";
-    }
-
     m_widget->setCurrentFg(7);
     m_widget->setCurrentBg(0);
     m_widget->setCurrentStyle(0);
 
     Cell blankCell;
-
     m_widget->fillScreen(*m_widget->getMainScreen(), blankCell);
     m_widget->fillScreen(*m_widget->getAlternateScreen(), blankCell);
 
@@ -296,37 +257,21 @@ void EscapeSequenceParser::doFullReset() {
 }
 
 void EscapeSequenceParser::cursorUp(int n) {
-    if (g_debug) {
-        qDebug() << "cursorUp called with n" << n;
-    }
-
     m_widget->setCursorRow(m_widget->getCursorRow() - n);
     m_widget->clampCursor();
 }
 
 void EscapeSequenceParser::cursorDown(int n) {
-    if (g_debug) {
-        qDebug() << "cursorDown called with n" << n;
-    }
-
     m_widget->setCursorRow(m_widget->getCursorRow() + n);
     m_widget->clampCursor();
 }
 
 void EscapeSequenceParser::cursorRight(int n) {
-    if (g_debug) {
-        qDebug() << "cursorRight called with n" << n;
-    }
-
     m_widget->setCursorCol(m_widget->getCursorCol() + n);
     m_widget->clampCursor();
 }
 
 void EscapeSequenceParser::cursorLeft(int n) {
-    if (g_debug) {
-        qDebug() << "cursorLeft called with n" << n;
-    }
-
     m_widget->setCursorCol(m_widget->getCursorCol() - n);
     m_widget->clampCursor();
 }

@@ -21,7 +21,6 @@ class OneTerm : public QWidget {
 
    private:
     void resizeEvent(QResizeEvent* event) override;
-    void updateTerminalSize();
 
     QVBoxLayout* m_layout;
     TerminalWidget* m_terminalWidget;

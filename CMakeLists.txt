@@ -13,7 +13,6 @@ add_executable(1t
     src/1t.cpp
     src/terminalwidget.cpp
     src/escapeparser.cpp
-    src/mousehandler.cpp
 )
 
 target_link_libraries(1t
