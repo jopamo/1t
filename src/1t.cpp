@@ -94,7 +94,7 @@ int main(int argc, char* argv[]) {
     app.setWindowIcon(QIcon("/usr/share/icons/hicolor/256x256/apps/1t.png"));
 
     OneTerm term;
-    term.resize(800, 600);
+    term.resize(1200, 300);
     term.show();
     term.launchShell("/bin/bash");
 
