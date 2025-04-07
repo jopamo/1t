@@ -8,13 +8,12 @@
 #include <QClipboard>
 #include <QGuiApplication>
 #include <QFont>
-#include <QFontMetrics>
+#include <QFontDatabase>
 #include <QDebug>
 
 #include <cerrno>
 #include <cstring>
 #include <algorithm>
-#include <vector>
 #include <memory>
 
 #include <pty.h>
@@ -38,20 +37,20 @@ TerminalWidget::TerminalWidget(QWidget* parent)
       m_mouseEnabled(true),
       m_selecting(false),
       m_hasSelection(false) {
-    QFont font;
-    font.setFamilies({"Source Code Pro", "Noto Color Emoji"});
-    font.setPointSize(10);
-    font.setStyleHint(QFont::Monospace);
-    setFont(font);
+    QFont mainFont(QStringLiteral("Source Code Pro"), 10);
+    mainFont.setStyleHint(QFont::Monospace, QFont::PreferDefault);
 
-    m_charWidth = fontMetrics().horizontalAdvance('M');
+    QFont::insertSubstitution(QStringLiteral("Source Code Pro"), QStringLiteral("Noto Color Emoji"));
+
+    setFont(mainFont);
+
+    m_charWidth = fontMetrics().horizontalAdvance(QChar('M'));
     m_charHeight = fontMetrics().height();
 
     m_mainScreen = std::make_unique<ScreenBuffer>(24, 80);
     m_alternateScreen = std::make_unique<ScreenBuffer>(24, 80);
 
     setFocusPolicy(Qt::StrongFocus);
-
     setMouseTracking(true);
 }
 
@@ -73,7 +72,6 @@ void TerminalWidget::resizeEvent(QResizeEvent* event) {
 
 void TerminalWidget::paintEvent(QPaintEvent* event) {
     QPainter painter(viewport());
-
     painter.fillRect(event->rect(), Qt::black);
 
     int firstVisibleLine = verticalScrollBar()->value();
@@ -81,19 +79,16 @@ void TerminalWidget::paintEvent(QPaintEvent* event) {
 
     for (int rowIndex = 0; rowIndex < visibleRows; ++rowIndex) {
         int lineIndex = firstVisibleLine + rowIndex;
-
         if (lineIndex >= int(m_scrollbackBuffer.size()) + currentBuffer().rows()) {
             break;
         }
 
         const Cell* cells = getCellsAtAbsoluteLine(lineIndex);
-        if (!cells) {
+        if (!cells)
             continue;
-        }
 
         for (int col = 0; col < currentBuffer().cols(); ++col) {
             drawCell(painter, rowIndex, col, cells[col]);
-
             if (isWithinLineSelection(lineIndex, col)) {
                 painter.fillRect(col * m_charWidth, rowIndex * m_charHeight, m_charWidth, m_charHeight,
                                  QColor(128, 128, 255, 128));
@@ -204,7 +199,6 @@ void TerminalWidget::updateScreen() {
 void TerminalWidget::useAlternateScreen(bool alt) {
     if (m_inAlternateScreen == alt)
         return;
-
     if (alt) {
         m_alternateScreen->resize(m_mainScreen->rows(), m_mainScreen->cols());
         fillScreen(*m_alternateScreen, makeCellForCurrentAttr());
@@ -287,9 +281,8 @@ void TerminalWidget::restoreCursorPos() {
 
 void TerminalWidget::eraseInLine(int mode) {
     int row = m_cursorRow;
-    if (row < 0 || row >= currentBuffer().rows()) {
+    if (row < 0 || row >= currentBuffer().rows())
         return;
-    }
 
     Cell blank = makeCellForCurrentAttr();
 
@@ -299,13 +292,11 @@ void TerminalWidget::eraseInLine(int mode) {
                 currentBuffer().fillRow(row, m_cursorCol, currentBuffer().cols(), blank);
             }
             break;
-
         case 1:
             if (m_cursorCol > 0) {
                 currentBuffer().fillRow(row, 0, m_cursorCol, blank);
             }
             break;
-
         case 2:
         default:
             currentBuffer().fillRow(row, 0, currentBuffer().cols(), blank);
@@ -340,13 +331,11 @@ void TerminalWidget::setSGR(const std::vector<int>& params) {
         m_currentStyle = 0;
         return;
     }
-
     size_t i = 0;
     while (i < params.size()) {
         int p = params[i++];
         switch (p) {
             case 0:
-
                 m_currentFg = 7;
                 m_currentBg = 0;
                 m_currentStyle = 0;
@@ -386,7 +375,6 @@ void TerminalWidget::setSGR(const std::vector<int>& params) {
             case 37:
                 m_currentFg = p - 30;
                 break;
-
             case 40:
             case 41:
             case 42:
@@ -397,7 +385,6 @@ void TerminalWidget::setSGR(const std::vector<int>& params) {
             case 47:
                 m_currentBg = p - 40;
                 break;
-
             case 90:
             case 91:
             case 92:
@@ -408,7 +395,6 @@ void TerminalWidget::setSGR(const std::vector<int>& params) {
             case 97:
                 m_currentFg = (p - 90) + 8;
                 break;
-
             case 100:
             case 101:
             case 102:
@@ -419,7 +405,6 @@ void TerminalWidget::setSGR(const std::vector<int>& params) {
             case 107:
                 m_currentBg = (p - 100) + 8;
                 break;
-
             case 38:
                 if (i + 1 < params.size() && params[i] == 5) {
                     i++;
@@ -428,7 +413,6 @@ void TerminalWidget::setSGR(const std::vector<int>& params) {
                     }
                 }
                 break;
-
             case 48:
                 if (i + 1 < params.size() && params[i] == 5) {
                     i++;
@@ -438,7 +422,6 @@ void TerminalWidget::setSGR(const std::vector<int>& params) {
                 }
                 break;
             default:
-
                 break;
         }
     }
@@ -449,17 +432,12 @@ void TerminalWidget::scrollUp(int top, int bottom) {
     for (int c = 0; c < currentBuffer().cols(); ++c) {
         scrolledLine[size_t(c)] = currentBuffer().cell(top, c);
     }
-
     for (int r = top; r < bottom; ++r) {
         for (int c = 0; c < currentBuffer().cols(); ++c) {
             currentBuffer().cell(r, c) = currentBuffer().cell(r + 1, c);
         }
     }
-
-    Cell blank;
-    blank.fg = m_currentFg;
-    blank.bg = m_currentBg;
-    blank.style = 0;
+    Cell blank = makeCellForCurrentAttr();
     currentBuffer().fillRow(bottom, 0, currentBuffer().cols(), blank);
 
     if (m_scrollbackBuffer.size() >= size_t(m_scrollbackMax)) {
@@ -471,6 +449,15 @@ void TerminalWidget::scrollUp(int top, int bottom) {
     verticalScrollBar()->setRange(0, maxScroll);
     verticalScrollBar()->setPageStep(currentBuffer().rows());
     verticalScrollBar()->setValue(maxScroll);
+
+    int rowCount = (bottom - top) + 1;
+    int pixelTop = top * m_charHeight;
+    int scrollH = rowCount * m_charHeight;
+
+    scroll(0, -m_charHeight, QRect(0, pixelTop, viewport()->width(), scrollH));
+
+    int newlyExposedY = bottom * m_charHeight;
+    update(0, newlyExposedY, viewport()->width(), m_charHeight);
 }
 
 void TerminalWidget::scrollDown(int top, int bottom) {
@@ -479,12 +466,15 @@ void TerminalWidget::scrollDown(int top, int bottom) {
             currentBuffer().cell(r, c) = currentBuffer().cell(r - 1, c);
         }
     }
-
-    Cell blank;
-    blank.fg = m_currentFg;
-    blank.bg = m_currentBg;
-    blank.style = 0;
+    Cell blank = makeCellForCurrentAttr();
     currentBuffer().fillRow(top, 0, currentBuffer().cols(), blank);
+
+    int rowCount = (bottom - top) + 1;
+    int pixelTop = top * m_charHeight;
+    int scrollH = rowCount * m_charHeight;
+
+    scroll(0, m_charHeight, QRect(0, pixelTop, viewport()->width(), scrollH));
+    update(0, pixelTop, viewport()->width(), m_charHeight);
 }
 
 void TerminalWidget::clampCursor() {
@@ -551,7 +541,6 @@ void TerminalWidget::setTerminalSize(int rows, int cols) {
         ws.ws_ypixel = 0;
         ioctl(m_ptyMaster, TIOCSWINSZ, &ws);
     }
-
     viewport()->update();
 }
 
@@ -576,13 +565,11 @@ QColor TerminalWidget::ansiIndexToColor(int idx, bool bold) {
                                               QColor(Qt::white)};
         int safe = std::clamp(idx, 0, 15);
         QColor c = basicTable[safe];
-
         if (bold && idx < 8) {
             c = c.lighter(130);
         }
         return c;
     }
-
     else if (idx < 256) {
         int offset = idx - 16;
         if (offset < 216) {
@@ -628,13 +615,10 @@ void TerminalWidget::drawCell(QPainter& p, int canvasRow, int col, const Cell& c
     p.fillRect(x, y, m_charWidth, m_charHeight, bg);
 
     p.setPen(fg);
-
     int baseline = y + fontMetrics().ascent();
-
     if (!cell.ch.isPrint()) {
         return;
     }
-
     p.drawText(x, baseline, QString(cell.ch));
 
     if (isUnderline) {
@@ -661,12 +645,10 @@ void TerminalWidget::selectWordAtPosition(int row, int col) {
     while (startCol > 0 && !cells[startCol - 1].ch.isSpace()) {
         startCol--;
     }
-
     int endCol = col;
     while (endCol < currentBuffer().cols() - 1 && !cells[endCol + 1].ch.isSpace()) {
         endCol++;
     }
-
     m_selAnchorAbsLine = row;
     m_selAnchorCol = startCol;
     m_selActiveAbsLine = row;
@@ -682,10 +664,8 @@ void TerminalWidget::clearSelection() {
 }
 
 bool TerminalWidget::hasSelection() const {
-    if (!m_hasSelection) {
+    if (!m_hasSelection)
         return false;
-    }
-
     bool sameLine = (m_selAnchorAbsLine == m_selActiveAbsLine);
     bool sameCol = (m_selAnchorCol == m_selActiveCol);
     return !(sameLine && sameCol);
@@ -700,21 +680,18 @@ QString TerminalWidget::selectedText() const {
     int endLine = std::max(m_selAnchorAbsLine, m_selActiveAbsLine);
 
     QStringList lines;
-
     for (int absLine = startLine; absLine <= endLine; ++absLine) {
         const Cell* rowCells = getCellsAtAbsoluteLine(absLine);
-        if (!rowCells) {
+        if (!rowCells)
             continue;
-        }
 
         int sc =
             (absLine == startLine) ? ((m_selAnchorAbsLine < m_selActiveAbsLine) ? m_selAnchorCol : m_selActiveCol) : 0;
         int ec = (absLine == endLine) ? ((m_selAnchorAbsLine > m_selActiveAbsLine) ? m_selAnchorCol : m_selActiveCol)
                                       : currentBuffer().cols() - 1;
 
-        if (sc > ec) {
+        if (sc > ec)
             std::swap(sc, ec);
-        }
         sc = std::clamp(sc, 0, currentBuffer().cols() - 1);
         ec = std::clamp(ec, 0, currentBuffer().cols() - 1);
 
@@ -729,37 +706,30 @@ QString TerminalWidget::selectedText() const {
 }
 
 bool TerminalWidget::isWithinLineSelection(int lineIndex, int col) const {
-    if (!m_hasSelection) {
+    if (!m_hasSelection)
         return false;
-    }
 
     int startLine = std::min(m_selAnchorAbsLine, m_selActiveAbsLine);
     int endLine = std::max(m_selAnchorAbsLine, m_selActiveAbsLine);
-
-    if (lineIndex < startLine || lineIndex > endLine) {
+    if (lineIndex < startLine || lineIndex > endLine)
         return false;
-    }
 
     int lineStartCol =
         (lineIndex == startLine) ? ((m_selAnchorAbsLine < m_selActiveAbsLine) ? m_selAnchorCol : m_selActiveCol) : 0;
     int lineEndCol = (lineIndex == endLine)
                          ? ((m_selAnchorAbsLine > m_selActiveAbsLine) ? m_selAnchorCol : m_selActiveCol)
                          : currentBuffer().cols() - 1;
-
-    if (lineStartCol > lineEndCol) {
+    if (lineStartCol > lineEndCol)
         std::swap(lineStartCol, lineEndCol);
-    }
 
     return (col >= lineStartCol && col <= lineEndCol);
 }
 
 void TerminalWidget::drawCursor(QPainter& p, int firstVisibleLine, int visibleRows) {
     int cursorAbsRow = int(m_scrollbackBuffer.size()) + m_cursorRow;
-
     if (cursorAbsRow >= firstVisibleLine && cursorAbsRow < firstVisibleLine + visibleRows) {
         int cy = (cursorAbsRow - firstVisibleLine) * m_charHeight;
         QRect r(m_cursorCol * m_charWidth, cy, m_charWidth, m_charHeight);
-
         p.setPen(Qt::NoPen);
         p.setBrush(Qt::white);
         p.drawRect(r);
@@ -779,9 +749,8 @@ const Cell* TerminalWidget::getCellsAtAbsoluteLine(int absLine) const {
 }
 
 void TerminalWidget::handleSpecialKey(int key) {
-    if (m_ptyMaster < 0) {
+    if (m_ptyMaster < 0)
         return;
-    }
 
     switch (key) {
         case Qt::Key_Enter:
@@ -800,18 +769,16 @@ void TerminalWidget::handleSpecialKey(int key) {
 }
 
 void TerminalWidget::copyToClipboard() {
-    if (!hasSelection()) {
+    if (!hasSelection())
         return;
-    }
     QString sel = selectedText();
     QClipboard* cb = QGuiApplication::clipboard();
     cb->setText(sel, QClipboard::Clipboard);
 }
 
 void TerminalWidget::pasteFromClipboard() {
-    if (m_ptyMaster < 0) {
+    if (m_ptyMaster < 0)
         return;
-    }
     QClipboard* cb = QGuiApplication::clipboard();
     QString text = cb->text(QClipboard::Clipboard);
     if (!text.isEmpty()) {
@@ -872,6 +839,5 @@ void TerminalWidget::handleIfMouseEnabled(QMouseEvent* event, std::function<void
         }
         return;
     }
-
     fn();
 }
