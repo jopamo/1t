@@ -3,8 +3,8 @@
 
 #include <QObject>
 #include <QByteArray>
-#include <QChar>
 #include <QVector>
+
 #include "terminalwidget.h"
 
 class EscapeSequenceParser : public QObject {
@@ -17,19 +17,25 @@ class EscapeSequenceParser : public QObject {
 
    private:
     enum class State { Normal, Esc, Csi, Osc };
-
     State m_state{State::Normal};
+
     bool m_privateMode{false};
-    bool m_oscEscape{false};
     QVector<int> m_params;
     QByteArray m_paramString;
-    QByteArray m_oscBuffer;
-    TerminalWidget* m_widget;
 
+    bool m_oscEscape{false};
+    QByteArray m_oscBuffer;
+
+    QByteArray m_textBuffer;
+
+    TerminalWidget* m_widget;
     int m_savedRow{0};
     int m_savedCol{0};
 
     void processByte(unsigned char b);
+
+    void flushTextBuffer();
+
     void handleCsiCommand(unsigned char cmd);
     void handleOscCommand();
     void doFullReset();
@@ -37,8 +43,9 @@ class EscapeSequenceParser : public QObject {
     void cursorDown(int n);
     void cursorRight(int n);
     void cursorLeft(int n);
-
     void storeParam();
+
+    void handleControlChar(unsigned char b);
 };
 
-#endif  // ESCAPEPARSER_H
+#endif

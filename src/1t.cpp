@@ -2,10 +2,17 @@
 
 #include <QApplication>
 #include <QIcon>
+#include <QScrollArea>
+#include <QDebug>
+#include <QSocketNotifier>
 
+#include <cerrno>
+#include <cstring>
 #include <unistd.h>
 #include <pty.h>
+#include <sys/ioctl.h>
 #include <sys/wait.h>
+#include <memory>
 
 OneTerm::OneTerm(QWidget* parent)
     : QWidget(parent),
@@ -17,13 +24,7 @@ OneTerm::OneTerm(QWidget* parent)
     m_layout->setContentsMargins(0, 0, 0, 10);
     m_layout->setSpacing(0);
 
-    QScrollArea* scrollArea = new QScrollArea(this);
-    scrollArea->setWidget(m_terminalWidget);
-    scrollArea->setWidgetResizable(true);
-    scrollArea->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
-    scrollArea->setVerticalScrollBarPolicy(Qt::ScrollBarAsNeeded);
-
-    m_layout->addWidget(scrollArea);
+    m_layout->addWidget(m_terminalWidget);
 }
 
 void OneTerm::launchShell(const char* shellPath) {
@@ -50,7 +51,6 @@ void OneTerm::launchShell(const char* shellPath) {
             qWarning() << "Failed to duplicate file descriptors:" << strerror(errno);
             _exit(127);
         }
-
         ::close(slaveFD);
 
         execl(shellPath, shellPath, (char*)nullptr);
@@ -63,7 +63,8 @@ void OneTerm::launchShell(const char* shellPath) {
         m_masterFD = masterFD;
 
         m_notifier = std::make_unique<QSocketNotifier>(masterFD, QSocketNotifier::Read, this);
-        connect(m_notifier.get(), &QSocketNotifier::activated, this, &OneTerm::readFromPty);
+
+        connect(m_notifier.get(), &QSocketNotifier::activated, this, [this](int) { readFromPty(); });
 
         m_terminalWidget->setPtyInfo(masterFD, pid);
     }
@@ -80,6 +81,8 @@ void OneTerm::readFromPty() {
         if (n == 0) {
             ::waitpid(m_shellPid, nullptr, 0);
             m_notifier->setEnabled(false);
+        }
+        else {
         }
     }
 }

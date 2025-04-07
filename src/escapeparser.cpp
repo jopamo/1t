@@ -1,6 +1,11 @@
 #include "escapeparser.h"
 #include "terminalwidget.h"
 
+#include <QDebug>
+#include <QString>
+#include <QChar>
+#include <algorithm>
+
 #include <unistd.h>
 #include <pty.h>
 #include <sys/ioctl.h>
@@ -13,9 +18,12 @@ EscapeSequenceParser::EscapeSequenceParser(TerminalWidget* widget, QObject* pare
     : QObject(parent), m_widget(widget) {}
 
 void EscapeSequenceParser::feed(const QByteArray& data) {
-    for (unsigned char c : data) {
-        processByte(c);
+    for (unsigned char b : data) {
+        processByte(b);
     }
+
+    flushTextBuffer();
+
     if (m_widget) {
         m_widget->updateScreen();
     }
@@ -24,27 +32,24 @@ void EscapeSequenceParser::feed(const QByteArray& data) {
 void EscapeSequenceParser::processByte(unsigned char b) {
     switch (m_state) {
         case State::Normal:
+
             if (b == 0x1B) {
+                flushTextBuffer();
                 m_state = State::Esc;
             }
-            else if (b == 0x08) {
-                cursorLeft(1);
+
+            else if (b < 0x20 || b == 0x7F) {
+                flushTextBuffer();
+
+                handleControlChar(b);
             }
-            else if (b == 0x09) {
-                cursorRight(8 - (m_widget->getCursorCol() % 8));
-            }
-            else if (b == 0x0D) {
-                m_widget->setCursorPos(m_widget->getCursorRow(), 0, true);
-            }
-            else if (b == 0x0A) {
-                m_widget->lineFeed();
-            }
-            else if (b >= 0x20) {
-                m_widget->putChar(QChar(b));
+            else {
+                m_textBuffer.append(char(b));
             }
             break;
 
         case State::Esc:
+
             if (b == '[') {
                 m_state = State::Csi;
                 m_params.clear();
@@ -89,6 +94,7 @@ void EscapeSequenceParser::processByte(unsigned char b) {
             break;
 
         case State::Csi:
+
             if (b >= '0' && b <= '9') {
                 m_paramString.append(char(b));
             }
@@ -103,9 +109,11 @@ void EscapeSequenceParser::processByte(unsigned char b) {
                 handleCsiCommand(b);
                 m_state = State::Normal;
             }
+
             break;
 
         case State::Osc:
+
             if (b == 0x07) {
                 handleOscCommand();
                 m_state = State::Normal;
@@ -129,11 +137,51 @@ void EscapeSequenceParser::processByte(unsigned char b) {
     }
 }
 
+void EscapeSequenceParser::flushTextBuffer() {
+    if (m_textBuffer.isEmpty()) {
+        return;
+    }
+
+    QString decoded = QString::fromUtf8(m_textBuffer);
+    m_textBuffer.clear();
+
+    for (QChar ch : decoded) {
+        if (ch == '\n') {
+            m_widget->lineFeed();
+        }
+        else if (ch == '\r') {
+            m_widget->setCursorPos(m_widget->getCursorRow(), 0, true);
+        }
+        else {
+            m_widget->putChar(ch);
+        }
+    }
+}
+
+void EscapeSequenceParser::handleControlChar(unsigned char b) {
+    switch (b) {
+        case 0x08:
+            cursorLeft(1);
+            break;
+        case 0x09:
+            cursorRight(8 - (m_widget->getCursorCol() % 8));
+            break;
+        case 0x0D:
+            m_widget->setCursorPos(m_widget->getCursorRow(), 0, true);
+            break;
+        case 0x0A:
+            m_widget->lineFeed();
+            break;
+        default:
+
+            break;
+    }
+}
+
 void EscapeSequenceParser::handleCsiCommand(unsigned char cmd) {
     if (m_params.empty()) {
         m_params.push_back(1);
     }
-
     std::vector<int> stdParams(m_params.begin(), m_params.end());
 
     switch (cmd) {
@@ -209,6 +257,7 @@ void EscapeSequenceParser::handleCsiCommand(unsigned char cmd) {
             }
             break;
         default:
+
             break;
     }
 }
@@ -217,6 +266,7 @@ void EscapeSequenceParser::handleOscCommand() {
     auto parts = m_oscBuffer.split(';');
     if (!parts.isEmpty()) {
         int ps = parts[0].toInt();
+
         if (ps == 0 || ps == 2) {
             if (parts.size() > 1) {
                 QByteArray t = parts[1];
@@ -234,7 +284,7 @@ void EscapeSequenceParser::handleOscCommand() {
 
 void EscapeSequenceParser::storeParam() {
     if (!m_paramString.isEmpty()) {
-        bool ok;
+        bool ok = false;
         int param = m_paramString.toInt(&ok);
         if (ok) {
             m_params.push_back(param);
