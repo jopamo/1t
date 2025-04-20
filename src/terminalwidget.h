@@ -37,7 +37,6 @@ class ScreenBuffer {
     int cols() const { return m_cols; }
 
     Cell& cell(int row, int col) { return m_data[size_t(row * m_cols + col)]; }
-
     const Cell& cell(int row, int col) const { return m_data[size_t(row * m_cols + col)]; }
 
     void fillRow(int row, int colStart, int colEnd, const Cell& c) {
@@ -63,6 +62,7 @@ class TerminalWidget : public QAbstractScrollArea {
 
    public:
     explicit TerminalWidget(QWidget* parent = nullptr);
+    ~TerminalWidget() override;
 
     QSize sizeHint() const override;
     void paintEvent(QPaintEvent* event) override;
@@ -73,11 +73,8 @@ class TerminalWidget : public QAbstractScrollArea {
     void mouseMoveEvent(QMouseEvent* event) override;
     void mouseReleaseEvent(QMouseEvent* event) override;
 
-    void setPtyInfo(int ptyMaster, pid_t shellPid);
     int getPtyMaster() const { return m_ptyMaster; }
-
     void setMouseEnabled(bool on);
-
     void updateScreen();
     void useAlternateScreen(bool alt);
     void setScrollingRegion(int top, int bottom);
@@ -95,7 +92,6 @@ class TerminalWidget : public QAbstractScrollArea {
 
     void scrollUp(int top, int bottom);
     void scrollDown(int top, int bottom);
-
     void selectWordAtPosition(int row, int col);
     void clearSelection();
     bool hasSelection() const;
@@ -103,7 +99,6 @@ class TerminalWidget : public QAbstractScrollArea {
 
     int getCursorRow() const { return m_cursorRow; }
     int getCursorCol() const { return m_cursorCol; }
-
     void setCursorRow(int row) {
         m_cursorRow = row;
         clampCursor();
@@ -124,30 +119,29 @@ class TerminalWidget : public QAbstractScrollArea {
 
     void fillScreen(ScreenBuffer& buf, const Cell& blank);
 
+    void setPtyInfo(int ptyMaster, pid_t shellPid);
+
    protected:
    private:
     const Cell* getCellsAtAbsoluteLine(int absLine) const;
-
     bool isWithinLineSelection(int lineIndex, int col) const;
-
     void drawCursor(QPainter& p, int firstVisibleLine, int visibleRows);
-
     void handleSpecialKey(int key);
-
     void copyToClipboard();
-
     void pasteFromClipboard();
-
     Cell makeCellForCurrentAttr() const;
-
     void handleIfMouseEnabled(QMouseEvent* event, std::function<void()> fn);
     void clampLineCol(int& line, int& col);
-
     ScreenBuffer& currentBuffer();
     const ScreenBuffer& currentBuffer() const;
 
+    void safeWriteToPty(const QByteArray& data);
+
     QByteArray keyEventToAnsiSequence(QKeyEvent* event);
 
+    inline void invalidateCell(int row, int col);
+
+   private:
     std::unique_ptr<ScreenBuffer> m_mainScreen;
     std::unique_ptr<ScreenBuffer> m_alternateScreen;
     bool m_inAlternateScreen;
@@ -160,7 +154,6 @@ class TerminalWidget : public QAbstractScrollArea {
     int m_cursorCol;
     int m_savedCursorRow;
     int m_savedCursorCol;
-
     int m_currentFg;
     int m_currentBg;
     unsigned char m_currentStyle;
@@ -168,10 +161,10 @@ class TerminalWidget : public QAbstractScrollArea {
     int m_scrollRegionTop;
     int m_scrollRegionBottom;
 
-    int m_ptyMaster = -1;
-    pid_t m_shellPid = -1;
-
+    int m_ptyMaster;
+    pid_t m_shellPid;
     bool m_mouseEnabled;
+
     bool m_selecting;
     bool m_hasSelection;
     int m_selAnchorAbsLine;
@@ -181,6 +174,9 @@ class TerminalWidget : public QAbstractScrollArea {
 
     int m_charWidth;
     int m_charHeight;
+
+    int m_prevCursorRow = -1;
+    int m_prevCursorCol = -1;
 
     QColor ansiIndexToColor(int idx, bool bold);
     void drawCell(QPainter& painter, int canvasRow, int col, const Cell& cell);

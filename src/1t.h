@@ -5,6 +5,9 @@
 #include <QSocketNotifier>
 #include <QVBoxLayout>
 #include <QScrollArea>
+#include <memory>
+#include <sys/types.h>
+
 #include "escapeparser.h"
 #include "terminalwidget.h"
 
@@ -13,6 +16,7 @@ class OneTerm : public QWidget {
 
    public:
     explicit OneTerm(QWidget* parent = nullptr);
+    ~OneTerm() override;
 
     void launchShell(const char* shellPath);
 
@@ -25,9 +29,10 @@ class OneTerm : public QWidget {
     QVBoxLayout* m_layout;
     TerminalWidget* m_terminalWidget;
     EscapeSequenceParser* m_parser;
+
     std::unique_ptr<QSocketNotifier> m_notifier;
     int m_masterFD;
     pid_t m_shellPid;
 };
 
-#endif  // ONETERM_H
+#endif

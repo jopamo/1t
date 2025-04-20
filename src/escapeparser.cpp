@@ -32,15 +32,12 @@ void EscapeSequenceParser::feed(const QByteArray& data) {
 void EscapeSequenceParser::processByte(unsigned char b) {
     switch (m_state) {
         case State::Normal:
-
             if (b == 0x1B) {
                 flushTextBuffer();
                 m_state = State::Esc;
             }
-
             else if (b < 0x20 || b == 0x7F) {
                 flushTextBuffer();
-
                 handleControlChar(b);
             }
             else {
@@ -49,7 +46,6 @@ void EscapeSequenceParser::processByte(unsigned char b) {
             break;
 
         case State::Esc:
-
             if (b == '[') {
                 m_state = State::Csi;
                 m_params.clear();
@@ -94,7 +90,6 @@ void EscapeSequenceParser::processByte(unsigned char b) {
             break;
 
         case State::Csi:
-
             if (b >= '0' && b <= '9') {
                 m_paramString.append(char(b));
             }
@@ -109,7 +104,6 @@ void EscapeSequenceParser::processByte(unsigned char b) {
                 handleCsiCommand(b);
                 m_state = State::Normal;
             }
-
             break;
 
         case State::Osc:
@@ -142,7 +136,7 @@ void EscapeSequenceParser::flushTextBuffer() {
         return;
     }
 
-    QString decoded = QString::fromUtf8(m_textBuffer);
+    const QString decoded = QString::fromUtf8(m_textBuffer);
     m_textBuffer.clear();
 
     for (QChar ch : decoded) {
@@ -179,56 +173,85 @@ void EscapeSequenceParser::handleControlChar(unsigned char b) {
 }
 
 void EscapeSequenceParser::handleCsiCommand(unsigned char cmd) {
-    if (m_params.empty()) {
-        m_params.push_back(1);
-    }
-    std::vector<int> stdParams(m_params.begin(), m_params.end());
+    auto ensure = [&](int def) {
+        if (m_params.empty()) {
+            m_params.push_back(def);
+        }
+    };
 
     switch (cmd) {
         case 'A':
-            cursorUp(stdParams[0]);
+        case 'B':
+        case 'C':
+        case 'D':
+        case 'E':
+        case 'F':
+            ensure(1);
+            break;
+
+        case 'J':
+        case 'K':
+            ensure(0);
+            break;
+
+        default:
+            break;
+    }
+
+    std::vector<int> stdParams(m_params.begin(), m_params.end());
+
+    auto P = [&](int i, int defVal = 0) { return (i < int(stdParams.size()) ? stdParams[i] : defVal); };
+
+    switch (cmd) {
+        case 'A':
+            cursorUp(P(0, 1));
             break;
         case 'B':
-            cursorDown(stdParams[0]);
+            cursorDown(P(0, 1));
             break;
         case 'C':
-            cursorRight(stdParams[0]);
+            cursorRight(P(0, 1));
             break;
         case 'D':
-            cursorLeft(stdParams[0]);
+            cursorLeft(P(0, 1));
             break;
-        case 'E': {
-            int n = stdParams[0];
-            m_widget->setCursorPos(m_widget->getCursorRow() + n, 0, true);
-        } break;
-        case 'F': {
-            int n = stdParams[0];
-            m_widget->setCursorPos(m_widget->getCursorRow() - n, 0, true);
-        } break;
+
+        case 'E':
+            m_widget->setCursorPos(m_widget->getCursorRow() + P(0, 1), 0, true);
+            break;
+        case 'F':
+            m_widget->setCursorPos(m_widget->getCursorRow() - P(0, 1), 0, true);
+            break;
+
         case 'G': {
-            int col = stdParams[0] - 1;
+            int col = P(0, 1) - 1;
             m_widget->setCursorPos(m_widget->getCursorRow(), col, true);
         } break;
+
         case 'H':
         case 'f': {
-            int row = (stdParams.size() > 0 ? stdParams[0] : 1) - 1;
-            int col = (stdParams.size() > 1 ? stdParams[1] : 1) - 1;
+            int row = P(0, 1) - 1;
+            int col = P(1, 1) - 1;
             m_widget->setCursorPos(row, col, true);
         } break;
+
         case 'J':
-            m_widget->eraseInDisplay(stdParams[0]);
+            m_widget->eraseInDisplay(P(0, 0));
             break;
         case 'K':
-            m_widget->eraseInLine(stdParams[0]);
+            m_widget->eraseInLine(P(0, 0));
             break;
+
         case 'm':
             m_widget->setSGR(stdParams);
             break;
+
         case 'r': {
-            int top = (stdParams.size() > 0 ? stdParams[0] : 1) - 1;
-            int bot = (stdParams.size() > 1 ? stdParams[1] : m_widget->getMainScreen()->rows()) - 1;
+            int top = P(0, 1) - 1;
+            int bot = P(1, m_widget->getMainScreen()->rows()) - 1;
             m_widget->setScrollingRegion(top, bot);
         } break;
+
         case 'h':
             if (m_privateMode) {
                 for (int p : stdParams) {
@@ -243,6 +266,7 @@ void EscapeSequenceParser::handleCsiCommand(unsigned char cmd) {
                 }
             }
             break;
+
         case 'l':
             if (m_privateMode) {
                 for (int p : stdParams) {
@@ -256,6 +280,7 @@ void EscapeSequenceParser::handleCsiCommand(unsigned char cmd) {
                 }
             }
             break;
+
         default:
 
             break;
@@ -266,7 +291,6 @@ void EscapeSequenceParser::handleOscCommand() {
     auto parts = m_oscBuffer.split(';');
     if (!parts.isEmpty()) {
         int ps = parts[0].toInt();
-
         if (ps == 0 || ps == 2) {
             if (parts.size() > 1) {
                 QByteArray t = parts[1];
