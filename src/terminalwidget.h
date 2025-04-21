@@ -2,54 +2,47 @@
 #define TERMINALWIDGET_H
 
 #include <QAbstractScrollArea>
+#include <QByteArray>
 #include <QColor>
 #include <QChar>
+#include <QKeyEvent>
+#include <QMouseEvent>
+#include <QPaintEvent>
+#include <QPainter>
+#include <QResizeEvent>
+#include <QString>
+
+#include <cstdint>
+#include <cstddef>
 #include <deque>
-#include <vector>
-#include <memory>
 #include <functional>
+#include <memory>
+#include <vector>
 #include <sys/types.h>
 
-enum class TextStyle : unsigned char { None = 0, Bold = 1 << 0, Underline = 1 << 1, Inverse = 1 << 2 };
+enum class TextStyle : std::uint8_t { None = 0, Bold = 1 << 0, Underline = 1 << 1, Inverse = 1 << 2 };
+
+class EscapeSequenceParser;
 
 struct Cell {
-    QChar ch = QChar(' ');
-    int fg = 7;
-    int bg = 0;
-    unsigned char style = 0;
+    QChar ch{' '};
+    int fg{7};
+    int bg{0};
+    std::uint8_t style{0};
 };
 
 class ScreenBuffer {
    public:
-    ScreenBuffer(int rows, int cols) : m_rows(rows), m_cols(cols), m_data(rows * cols) {}
+    ScreenBuffer(int rows, int cols);
 
-    void resize(int rows, int cols) {
-        if (rows < 1)
-            rows = 1;
-        if (cols < 1)
-            cols = 1;
-        m_rows = rows;
-        m_cols = cols;
-        m_data.assign(size_t(rows * cols), Cell());
-    }
+    void resize(int rows, int cols);
+    int rows() const noexcept { return m_rows; }
+    int cols() const noexcept { return m_cols; }
 
-    int rows() const { return m_rows; }
-    int cols() const { return m_cols; }
+    Cell& cell(int r, int c);
+    const Cell& cell(int r, int c) const;
 
-    Cell& cell(int row, int col) { return m_data[size_t(row * m_cols + col)]; }
-    const Cell& cell(int row, int col) const { return m_data[size_t(row * m_cols + col)]; }
-
-    void fillRow(int row, int colStart, int colEnd, const Cell& c) {
-        if (row < 0 || row >= m_rows)
-            return;
-        if (colStart < 0)
-            colStart = 0;
-        if (colEnd > m_cols)
-            colEnd = m_cols;
-        for (int col = colStart; col < colEnd; ++col) {
-            cell(row, col) = c;
-        }
-    }
+    void fillRow(int r, int c0, int c1, const Cell&);
 
    private:
     int m_rows;
@@ -59,21 +52,21 @@ class ScreenBuffer {
 
 class TerminalWidget : public QAbstractScrollArea {
     Q_OBJECT
-
    public:
     explicit TerminalWidget(QWidget* parent = nullptr);
     ~TerminalWidget() override;
 
     QSize sizeHint() const override;
-    void paintEvent(QPaintEvent* event) override;
-    void resizeEvent(QResizeEvent* event) override;
-    void keyPressEvent(QKeyEvent* event) override;
+    void paintEvent(QPaintEvent*) override;
+    void resizeEvent(QResizeEvent*) override;
+    void keyPressEvent(QKeyEvent*) override;
+    void mousePressEvent(QMouseEvent*) override;
+    void mouseMoveEvent(QMouseEvent*) override;
+    void mouseReleaseEvent(QMouseEvent*) override;
 
-    void mousePressEvent(QMouseEvent* event) override;
-    void mouseMoveEvent(QMouseEvent* event) override;
-    void mouseReleaseEvent(QMouseEvent* event) override;
+    int getPtyMaster() const noexcept { return m_ptyMaster; }
+    int rows() const noexcept { return currentBuffer().rows(); }
 
-    int getPtyMaster() const { return m_ptyMaster; }
     void setMouseEnabled(bool on);
     void updateScreen();
     void useAlternateScreen(bool alt);
@@ -83,7 +76,7 @@ class TerminalWidget : public QAbstractScrollArea {
     void lineFeed();
     void reverseLineFeed();
     void putChar(QChar ch);
-    void setCursorPos(int row, int col, bool doClamp = true);
+    void setCursorPos(int row, int col, bool clamp = true);
     void saveCursorPos();
     void restoreCursorPos();
     void eraseInLine(int mode);
@@ -92,94 +85,139 @@ class TerminalWidget : public QAbstractScrollArea {
 
     void scrollUp(int top, int bottom);
     void scrollDown(int top, int bottom);
+
     void selectWordAtPosition(int row, int col);
     void clearSelection();
     bool hasSelection() const;
     QString selectedText() const;
 
-    int getCursorRow() const { return m_cursorRow; }
-    int getCursorCol() const { return m_cursorCol; }
-    void setCursorRow(int row) {
-        m_cursorRow = row;
+    void deleteChars(int n);
+    void eraseChars(int n);
+    void insertChars(int n);
+
+    int getCursorRow() const noexcept { return m_cursorRow; }
+    int getCursorCol() const noexcept { return m_cursorCol; }
+    void setCursorRow(int r) {
+        m_cursorRow = r;
         clampCursor();
     }
-    void setCursorCol(int col) {
-        m_cursorCol = col;
+    void setCursorCol(int c) {
+        m_cursorCol = c;
         clampCursor();
     }
 
-    void setCurrentFg(int fg) { m_currentFg = fg; }
-    void setCurrentBg(int bg) { m_currentBg = bg; }
-    void setCurrentStyle(unsigned char s) { m_currentStyle = s; }
+    void setCurrentFg(int fg) noexcept { m_currentFg = fg; }
+    void setCurrentBg(int bg) noexcept { m_currentBg = bg; }
+    void setCurrentStyle(std::uint8_t st) noexcept { m_currentStyle = st; }
 
-    void clampCursor();
+    void fullReset();
+    void handleBell();
 
     ScreenBuffer* getMainScreen() { return m_mainScreen.get(); }
     ScreenBuffer* getAlternateScreen() { return m_alternateScreen.get(); }
 
     void fillScreen(ScreenBuffer& buf, const Cell& blank);
-
     void setPtyInfo(int ptyMaster, pid_t shellPid);
 
-   protected:
+    bool isViewPinnedBottom() const noexcept;
+    void maybeAdjustScrollBar(int deltaLines);
+
    private:
+    void clampCursor();
     const Cell* getCellsAtAbsoluteLine(int absLine) const;
-    bool isWithinLineSelection(int lineIndex, int col) const;
+    bool isWithinLineSelection(int line, int col) const;
     void drawCursor(QPainter& p, int firstVisibleLine, int visibleRows);
     void handleSpecialKey(int key);
     void copyToClipboard();
     void pasteFromClipboard();
     Cell makeCellForCurrentAttr() const;
-    void handleIfMouseEnabled(QMouseEvent* event, std::function<void()> fn);
+    void handleIfMouseEnabled(QMouseEvent*, std::function<void()> fn);
     void clampLineCol(int& line, int& col);
     ScreenBuffer& currentBuffer();
     const ScreenBuffer& currentBuffer() const;
 
-    void safeWriteToPty(const QByteArray& data);
+    void safeWriteToPty(const QByteArray& bytes);
+    QByteArray keyEventToAnsiSequence(QKeyEvent*);
+    void invalidateCell(int row, int col);
 
-    QByteArray keyEventToAnsiSequence(QKeyEvent* event);
-
-    inline void invalidateCell(int row, int col);
-
-   private:
     std::unique_ptr<ScreenBuffer> m_mainScreen;
     std::unique_ptr<ScreenBuffer> m_alternateScreen;
-    bool m_inAlternateScreen;
+    bool m_inAlternateScreen{false};
 
     std::deque<std::vector<Cell>> m_scrollbackBuffer;
-    int m_scrollbackMax;
+    int m_scrollbackMax{1000};
 
-    bool m_showCursor;
-    int m_cursorRow;
-    int m_cursorCol;
-    int m_savedCursorRow;
-    int m_savedCursorCol;
-    int m_currentFg;
-    int m_currentBg;
-    unsigned char m_currentStyle;
+    bool m_showCursor{true};
+    int m_cursorRow{0};
+    int m_cursorCol{0};
+    int m_savedCursorRow{0};
+    int m_savedCursorCol{0};
+    int m_currentFg{7};
+    int m_currentBg{0};
+    std::uint8_t m_currentStyle{0};
 
-    int m_scrollRegionTop;
-    int m_scrollRegionBottom;
+    int m_scrollRegionTop{0};
+    int m_scrollRegionBottom{0};
 
-    int m_ptyMaster;
-    pid_t m_shellPid;
-    bool m_mouseEnabled;
+    int m_ptyMaster{-1};
+    pid_t m_shellPid{-1};
 
-    bool m_selecting;
-    bool m_hasSelection;
-    int m_selAnchorAbsLine;
-    int m_selAnchorCol;
-    int m_selActiveAbsLine;
-    int m_selActiveCol;
+    bool m_mouseEnabled{true};
+    bool m_selecting{false};
+    bool m_hasSelection{false};
 
-    int m_charWidth;
-    int m_charHeight;
+    int m_selAnchorAbsLine{0}, m_selAnchorCol{0};
+    int m_selActiveAbsLine{0}, m_selActiveCol{0};
 
-    int m_prevCursorRow = -1;
-    int m_prevCursorCol = -1;
+    int m_charWidth{0}, m_charHeight{0};
+    int m_prevCursorRow{-1}, m_prevCursorCol{-1};
 
     QColor ansiIndexToColor(int idx, bool bold);
-    void drawCell(QPainter& painter, int canvasRow, int col, const Cell& cell);
+    void drawCell(QPainter&, int canvasRow, int col, const Cell&);
+    friend class EscapeSequenceParser;
 };
+
+inline ScreenBuffer::ScreenBuffer(int rows, int cols) {
+    rows = std::max(rows, 1);
+    cols = std::max(cols, 1);
+    m_rows = rows;
+    m_cols = cols;
+    m_data.resize(std::size_t(rows) * std::size_t(cols));
+}
+
+inline void ScreenBuffer::resize(int rows, int cols) {
+    m_rows = std::max(rows, 1);
+    m_cols = std::max(cols, 1);
+
+    m_data.assign(static_cast<std::size_t>(m_rows) * static_cast<std::size_t>(m_cols), Cell{});
+}
+
+inline Cell& ScreenBuffer::cell(int r, int c) {
+    assert(r >= 0 && r < m_rows && c >= 0 && c < m_cols && "Cell access out of bounds");
+
+    std::size_t idx = static_cast<std::size_t>(r) * static_cast<std::size_t>(m_cols) + static_cast<std::size_t>(c);
+
+    return m_data[idx];
+}
+
+inline const Cell& ScreenBuffer::cell(int r, int c) const {
+    assert(r >= 0 && r < m_rows && c >= 0 && c < m_cols && "Cell access out of bounds");
+
+    std::size_t idx = static_cast<std::size_t>(r) * static_cast<std::size_t>(m_cols) + static_cast<std::size_t>(c);
+
+    return m_data[idx];
+}
+
+inline void ScreenBuffer::fillRow(int r, int c0, int c1, const Cell& cell) {
+    if (r < 0 || r >= m_rows)
+        return;
+
+    c0 = std::clamp(c0, 0, m_cols);
+    c1 = std::clamp(c1, 0, m_cols);
+
+    for (int col = c0; col < c1; ++col) {
+        this->cell(r, col) = cell;
+    }
+}
 
 #endif

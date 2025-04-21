@@ -1,134 +1,250 @@
 #include "escapeparser.h"
 #include "terminalwidget.h"
+#include "debug.h"
 
 #include <QDebug>
-#include <QString>
+#include <QStringList>
+#include <QStringView>
 #include <QChar>
 #include <algorithm>
+#include <array>
+#include <vector>
 
-#include <unistd.h>
-#include <pty.h>
-#include <sys/ioctl.h>
-#include <sys/wait.h>
-#include <fcntl.h>
-#include <cstdio>
-#include <cstdlib>
+#if __cplusplus < 201402L
+#error "This file requires at least C++14 (or newer) language standard."
+#endif
 
 EscapeSequenceParser::EscapeSequenceParser(TerminalWidget* widget, QObject* parent)
-    : QObject(parent), m_widget(widget) {}
+    : QObject(parent), m_widget(widget) {
+#ifdef ENABLE_DEBUG
+    DBG() << "EscapeSequenceParser constructor";
+#endif
+    resetStateMachine();
+}
 
 void EscapeSequenceParser::feed(const QByteArray& data) {
-    for (unsigned char b : data) {
+#ifdef ENABLE_DEBUG
+    DBG() << "feed" << data.size() << "bytes";
+#endif
+
+    for (char c : data) {
+        unsigned char b = static_cast<unsigned char>(c);
         processByte(b);
     }
 
     flushTextBuffer();
 
     if (m_widget) {
+#ifdef ENABLE_DEBUG
+        DBG() << "calling updateScreen() after feed";
+#endif
         m_widget->updateScreen();
     }
 }
 
 void EscapeSequenceParser::processByte(unsigned char b) {
+    static constexpr std::array<uint8_t, 256> g_cls = [] {
+        std::array<uint8_t, 256> arr{};
+
+        for (auto& x : arr) {
+            x = 0;
+        }
+
+        for (unsigned i = 0; i < 0x20; ++i) {
+            arr[i] = 1;
+        }
+
+        arr[0x1B] = 2;
+        return arr;
+    }();
+
+    State oldState = m_state;
+    uint8_t cls = g_cls[b];
+
     switch (m_state) {
-        case State::Normal:
-            if (b == 0x1B) {
-                flushTextBuffer();
-                m_state = State::Esc;
+        case State::Ground: {
+            if (cls == 0) {
+                m_textBuffer.push_back(static_cast<char>(b));
             }
-            else if (b < 0x20 || b == 0x7F) {
+            else if (cls == 1) {
                 flushTextBuffer();
                 handleControlChar(b);
             }
             else {
-                m_textBuffer.append(char(b));
+                flushTextBuffer();
+                m_state = State::Escape;
             }
             break;
+        }
 
-        case State::Esc:
-            if (b == '[') {
-                m_state = State::Csi;
-                m_params.clear();
-                m_privateMode = false;
-                m_paramString.clear();
-            }
-            else if (b == ']') {
-                m_state = State::Osc;
-                m_oscBuffer.clear();
-            }
-            else if (b == 'c') {
-                doFullReset();
-                m_state = State::Normal;
-            }
-            else if (b == '7') {
-                m_widget->saveCursorPos();
-                m_state = State::Normal;
-            }
-            else if (b == '8') {
-                m_widget->restoreCursorPos();
-                m_state = State::Normal;
-            }
-            else if (b == '(' || b == ')' || b == '*') {
-                m_state = State::Normal;
-            }
-            else if (b == 'D') {
-                m_widget->lineFeed();
-                m_state = State::Normal;
-            }
-            else if (b == 'M') {
-                m_widget->reverseLineFeed();
-                m_state = State::Normal;
-            }
-            else if (b == 'E') {
-                m_widget->lineFeed();
-                m_widget->setCursorPos(m_widget->getCursorRow(), 0, true);
-                m_state = State::Normal;
-            }
-            else {
-                m_state = State::Normal;
+        case State::Escape: {
+            switch (b) {
+                case '[':
+                    m_state = State::CsiEntry;
+                    m_paramBuffer.clear();
+                    m_intermediate.clear();
+                    m_escQuestionMark = false;
+                    break;
+                case ']':
+                    m_state = State::OscString;
+                    m_oscString.clear();
+                    break;
+                case '7':
+                    if (m_widget)
+                        m_widget->saveCursorPos();
+                    m_state = State::Ground;
+                    break;
+                case '8':
+                    if (m_widget)
+                        m_widget->restoreCursorPos();
+                    m_state = State::Ground;
+                    break;
+                case 'D':
+                    if (m_widget)
+                        m_widget->lineFeed();
+                    m_state = State::Ground;
+                    break;
+                case 'M':
+                    if (m_widget)
+                        m_widget->reverseLineFeed();
+                    m_state = State::Ground;
+                    break;
+                case 'E':
+                    if (m_widget) {
+                        m_widget->lineFeed();
+                        m_widget->setCursorPos(m_widget->getCursorRow(), 0, true);
+                    }
+                    m_state = State::Ground;
+                    break;
+                case 'c':
+                    if (m_widget)
+                        m_widget->fullReset();
+                    m_state = State::Ground;
+                    break;
+                default:
+#ifdef ENABLE_DEBUG
+                    DBG() << "Unrecognized ESC sequence: ESC " << char(b);
+#endif
+                    m_state = State::Ground;
+                    break;
             }
             break;
+        }
 
-        case State::Csi:
-            if (b >= '0' && b <= '9') {
-                m_paramString.append(char(b));
-            }
-            else if (b == ';') {
-                storeParam();
-            }
-            else if (b == '?') {
-                m_privateMode = true;
-            }
-            else if ((b >= 0x40 && b <= 0x7E) || b == '@') {
-                storeParam();
-                handleCsiCommand(b);
-                m_state = State::Normal;
-            }
+        case State::CsiEntry:
+        case State::CsiParam:
+        case State::CsiIntermediate:
+        case State::CsiIgnore:
+            processCsiSubState(b);
             break;
 
-        case State::Osc:
-
+        case State::OscString: {
             if (b == 0x07) {
-                handleOscCommand();
-                m_state = State::Normal;
+                oscDispatch();
+                m_state = State::Ground;
             }
             else if (b == 0x1B) {
-                m_oscEscape = true;
+                m_oscString.push_back('\x1B');
             }
-            else {
-                if (!m_oscEscape) {
-                    m_oscBuffer.append(char(b));
+            else if (b == '\\') {
+                if (!m_oscString.isEmpty() && m_oscString.back() == '\x1B') {
+                    m_oscString.chop(1);
+                    oscDispatch();
+                    m_state = State::Ground;
                 }
                 else {
-                    if (b == '\\') {
-                        handleOscCommand();
-                        m_state = State::Normal;
-                    }
-                    m_oscEscape = false;
+                    m_oscString.push_back('\\');
                 }
             }
+            else {
+                m_oscString.push_back(static_cast<char>(b));
+            }
+            break;
+        }
+
+        case State::SosPmApcString:
             break;
     }
+
+#ifdef ENABLE_DEBUG
+    if (oldState != m_state) {
+        DBG() << "processByte(" << int(b) << ") state transition: Ground -> " << stateName(oldState) << " -> "
+              << stateName(m_state);
+    }
+#endif
+}
+
+void EscapeSequenceParser::processCsiSubState(unsigned char b) {
+    State old = m_state;
+
+    switch (m_state) {
+        case State::CsiEntry: {
+            if (b == '?') {
+                m_escQuestionMark = true;
+                m_state = State::CsiParam;
+            }
+            else if ((b >= '0' && b <= '9') || b == ';') {
+                m_paramBuffer.push_back(static_cast<char>(b));
+                m_state = State::CsiParam;
+            }
+            else if (b >= 0x20 && b <= 0x2F) {
+                m_intermediate.push_back(static_cast<char>(b));
+                m_state = State::CsiIntermediate;
+            }
+            else if (b >= 0x40 && b <= 0x7E) {
+                csiDispatch(b);
+                m_state = State::Ground;
+            }
+            else {
+                m_state = State::Ground;
+            }
+            break;
+        }
+        case State::CsiParam: {
+            if ((b >= '0' && b <= '9') || b == ';') {
+                m_paramBuffer.push_back(static_cast<char>(b));
+            }
+            else if (b >= 0x20 && b <= 0x2F) {
+                m_intermediate.push_back(static_cast<char>(b));
+                m_state = State::CsiIntermediate;
+            }
+            else if (b >= 0x40 && b <= 0x7E) {
+                csiDispatch(b);
+                m_state = State::Ground;
+            }
+            else {
+                m_state = State::CsiIgnore;
+            }
+            break;
+        }
+        case State::CsiIntermediate: {
+            if (b >= 0x20 && b <= 0x2F) {
+                m_intermediate.push_back(static_cast<char>(b));
+            }
+            else if (b >= 0x40 && b <= 0x7E) {
+                csiDispatch(b);
+                m_state = State::Ground;
+            }
+            else {
+                m_state = State::CsiIgnore;
+            }
+            break;
+        }
+        case State::CsiIgnore: {
+            if (b >= 0x40 && b <= 0x7E) {
+                m_state = State::Ground;
+            }
+            break;
+        }
+        default:
+            break;
+    }
+
+#ifdef ENABLE_DEBUG
+    if (old != m_state) {
+        DBG() << "processCsiSubState(" << int(b) << ") transition " << stateName(old) << " -> " << stateName(m_state);
+    }
+#endif
 }
 
 void EscapeSequenceParser::flushTextBuffer() {
@@ -136,216 +252,360 @@ void EscapeSequenceParser::flushTextBuffer() {
         return;
     }
 
-    const QString decoded = QString::fromUtf8(m_textBuffer);
+    if (!m_widget) {
+        m_textBuffer.clear();
+        return;
+    }
+
+    QString chunk = QString::fromUtf8(m_textBuffer.data(), m_textBuffer.size());
     m_textBuffer.clear();
 
-    for (QChar ch : decoded) {
-        if (ch == '\n') {
-            m_widget->lineFeed();
+    for (int i = 0; i < chunk.size(); ++i) {
+        QChar ch = chunk.at(i);
+
+        if (ch.isHighSurrogate() && (i + 1) < chunk.size()) {
+            QChar nextCh = chunk.at(i + 1);
+            if (nextCh.isLowSurrogate()) {
+                char32_t high = static_cast<char32_t>(ch.unicode() - 0xD800) << 10;
+                char32_t low = static_cast<char32_t>(nextCh.unicode() - 0xDC00);
+                char32_t ucs4 = 0x10000 + (high | low);
+
+                QString wideChar = QString::fromUcs4(&ucs4, 1);
+
+                if (!wideChar.isEmpty()) {
+                    m_widget->putChar(wideChar.at(0));
+                }
+                ++i;
+                continue;
+            }
         }
-        else if (ch == '\r') {
+
+        if (ch == u'\r') {
             m_widget->setCursorPos(m_widget->getCursorRow(), 0, true);
+            continue;
         }
-        else {
-            m_widget->putChar(ch);
+        if (ch == u'\n') {
+            m_widget->lineFeed();
+            continue;
         }
+
+        m_widget->putChar(ch);
     }
 }
 
-void EscapeSequenceParser::handleControlChar(unsigned char b) {
-    switch (b) {
-        case 0x08:
-            cursorLeft(1);
-            break;
-        case 0x09:
-            cursorRight(8 - (m_widget->getCursorCol() % 8));
-            break;
+void EscapeSequenceParser::handleControlChar(unsigned char c0) {
+    if (!m_widget)
+        return;
+
+    switch (c0) {
         case 0x0D:
             m_widget->setCursorPos(m_widget->getCursorRow(), 0, true);
             break;
+
         case 0x0A:
             m_widget->lineFeed();
             break;
-        default:
 
+        case 0x08:
+            m_widget->setCursorCol(m_widget->getCursorCol() - 1);
+            m_widget->clampCursor();
+            break;
+
+        case 0x07:
+            m_widget->handleBell();
+            break;
+
+        case 0x09: {
+            int nextTab = ((m_widget->getCursorCol() / 8) + 1) * 8;
+            m_widget->setCursorCol(nextTab);
+            m_widget->clampCursor();
+            break;
+        }
+
+        default:
+#ifdef ENABLE_DEBUG
+            DBG() << "Unhandled control char: 0x" << std::hex << int(c0);
+#endif
             break;
     }
 }
 
-void EscapeSequenceParser::handleCsiCommand(unsigned char cmd) {
-    auto ensure = [&](int def) {
-        if (m_params.empty()) {
-            m_params.push_back(def);
-        }
-    };
+void EscapeSequenceParser::csiDispatch(unsigned char finalByte) {
+#ifdef ENABLE_DEBUG
+    DBG() << "csiDispatch finalByte=" << int(finalByte);
+#endif
 
-    switch (cmd) {
-        case 'A':
-        case 'B':
-        case 'C':
-        case 'D':
-        case 'E':
-        case 'F':
-            ensure(1);
-            break;
-
-        case 'J':
-        case 'K':
-            ensure(0);
-            break;
-
-        default:
-            break;
+    if (!m_widget) {
+        m_paramBuffer.clear();
+        m_intermediate.clear();
+        return;
     }
 
-    std::vector<int> stdParams(m_params.begin(), m_params.end());
+    std::vector<int> params;
+    if (!m_paramBuffer.isEmpty()) {
+        const QList<QByteArray> parts = QByteArray{m_paramBuffer}.split(';');
+        for (const QByteArray& part : parts) {
+            bool ok = false;
+            int v = part.toInt(&ok);
 
-    auto P = [&](int i, int defVal = 0) { return (i < int(stdParams.size()) ? stdParams[i] : defVal); };
+            if (!ok || v < 0) {
+#ifdef ENABLE_DEBUG
+                DBG() << "Invalid parameter in CSI sequence:" << part;
+#endif
+                params.push_back(0);
+            }
+            else {
+                params.push_back(v);
+            }
+        }
+    }
+    if (params.empty()) {
+        params.emplace_back(0);
+    }
 
-    switch (cmd) {
+    bool priv = m_escQuestionMark;
+
+    auto P = [&](int idx, int def) -> int {
+        if (idx >= 0 && idx < static_cast<int>(params.size())) {
+            return params[static_cast<size_t>(idx)];
+        }
+        return def;
+    };
+
+    const int rows = m_widget->currentBuffer().rows();
+    const int cols = m_widget->currentBuffer().cols();
+    const int curR = m_widget->getCursorRow();
+    const int curC = m_widget->getCursorCol();
+
+    switch (finalByte) {
         case 'A':
-            cursorUp(P(0, 1));
+            m_widget->setCursorRow(curR - P(0, 1));
+            m_widget->clampCursor();
             break;
+
         case 'B':
-            cursorDown(P(0, 1));
-            break;
-        case 'C':
-            cursorRight(P(0, 1));
-            break;
-        case 'D':
-            cursorLeft(P(0, 1));
+            m_widget->setCursorRow(curR + P(0, 1));
+            m_widget->clampCursor();
             break;
 
-        case 'E':
-            m_widget->setCursorPos(m_widget->getCursorRow() + P(0, 1), 0, true);
+        case 'C': {
+            int newC = std::min(curC + P(0, 1), cols - 1);
+            m_widget->setCursorCol(newC);
             break;
-        case 'F':
-            m_widget->setCursorPos(m_widget->getCursorRow() - P(0, 1), 0, true);
+        }
+        case 'D': {
+            int newC = std::max(curC - P(0, 1), 0);
+            m_widget->setCursorCol(newC);
             break;
-
-        case 'G': {
-            int col = P(0, 1) - 1;
-            m_widget->setCursorPos(m_widget->getCursorRow(), col, true);
-        } break;
-
-        case 'H':
-        case 'f': {
-            int row = P(0, 1) - 1;
-            int col = P(1, 1) - 1;
-            m_widget->setCursorPos(row, col, true);
-        } break;
+        }
 
         case 'J':
-            m_widget->eraseInDisplay(P(0, 0));
+            doEraseInDisplay(P(0, 0));
             break;
         case 'K':
-            m_widget->eraseInLine(P(0, 0));
+            doEraseInLine(P(0, 0));
+            break;
+        case 'P':
+            m_widget->deleteChars(P(0, 1));
+            break;
+        case 'X':
+            m_widget->eraseChars(P(0, 1));
+            break;
+        case '@':
+            m_widget->insertChars(P(0, 1));
             break;
 
         case 'm':
-            m_widget->setSGR(stdParams);
+            m_widget->setSGR(params);
             break;
 
         case 'r': {
-            int top = P(0, 1) - 1;
-            int bot = P(1, m_widget->getMainScreen()->rows()) - 1;
-            m_widget->setScrollingRegion(top, bot);
-        } break;
-
-        case 'h':
-            if (m_privateMode) {
-                for (int p : stdParams) {
-                    if (p == 1049) {
-                        m_widget->useAlternateScreen(true);
-                        m_savedRow = m_widget->getCursorRow();
-                        m_savedCol = m_widget->getCursorCol();
-                    }
-                    else if (p == 1000) {
-                        m_widget->setMouseEnabled(true);
-                    }
-                }
+            int top = std::clamp(P(0, 1) - 1, 0, rows - 1);
+            int bottom = std::clamp(P(1, rows) - 1, 0, rows - 1);
+            if (top > bottom) {
+#ifdef ENABLE_DEBUG
+                DBG() << "Invalid scrolling region, swapping top/bottom.";
+#endif
+                std::swap(top, bottom);
             }
+            m_widget->setScrollingRegion(top, bottom);
+            break;
+        }
+
+        default:
+#ifdef ENABLE_DEBUG
+            DBG() << "Unsupported CSI finalByte:" << char(finalByte) << "params=" << params;
+#endif
+            break;
+    }
+
+    m_paramBuffer.clear();
+    m_intermediate.clear();
+}
+
+void EscapeSequenceParser::oscDispatch() {
+#ifdef ENABLE_DEBUG
+    DBG() << "oscDispatch";
+#endif
+
+    if (!m_widget) {
+        m_oscString.clear();
+        return;
+    }
+
+    QStringView osc = QString::fromLatin1(m_oscString);
+    m_oscString.clear();
+
+    qsizetype sep = osc.indexOf(u';');
+    if (sep < 0) {
+#ifdef ENABLE_DEBUG
+        DBG() << "Malformed OSC: missing semicolon";
+#endif
+        return;
+    }
+
+    bool ok = false;
+    int ps = osc.left(sep).toInt(&ok);
+    if (!ok) {
+#ifdef ENABLE_DEBUG
+        DBG() << "Malformed OSC: cannot parse ps (before semicolon)";
+#endif
+        return;
+    }
+
+    QStringView pt = osc.mid(sep + 1);
+
+    switch (ps) {
+        case 0:
+        case 2:
+            m_widget->setWindowTitle(pt.toString());
             break;
 
-        case 'l':
-            if (m_privateMode) {
-                for (int p : stdParams) {
-                    if (p == 1049) {
-                        m_widget->useAlternateScreen(false);
-                        m_widget->setCursorPos(m_savedRow, m_savedCol, true);
-                    }
-                    else if (p == 1000) {
-                        m_widget->setMouseEnabled(false);
-                    }
-                }
-            }
+        case 4:
+#ifdef ENABLE_DEBUG
+            DBG() << "OSC 4 (set color) not yet implemented. Param=" << pt;
+#endif
+            break;
+
+        case 8:
+#ifdef ENABLE_DEBUG
+            DBG() << "OSC 8 (hyperlink) not yet implemented. Param=" << pt;
+#endif
             break;
 
         default:
-
+#ifdef ENABLE_DEBUG
+            DBG() << "Ignoring unsupported OSC code: " << ps << ", params=" << pt;
+#endif
             break;
     }
 }
 
-void EscapeSequenceParser::handleOscCommand() {
-    auto parts = m_oscBuffer.split(';');
-    if (!parts.isEmpty()) {
-        int ps = parts[0].toInt();
-        if (ps == 0 || ps == 2) {
-            if (parts.size() > 1) {
-                QByteArray t = parts[1];
-                for (int i = 2; i < parts.size(); i++) {
-                    t += ';';
-                    t += parts[i];
-                }
-                if (m_widget->window()) {
-                    m_widget->window()->setWindowTitle(QString::fromUtf8(t));
-                }
-            }
-        }
+void EscapeSequenceParser::resetStateMachine() {
+#ifdef ENABLE_DEBUG
+    DBG() << "resetStateMachine";
+#endif
+    m_state = State::Ground;
+
+    m_textBuffer.clear();
+    m_paramBuffer.clear();
+    m_intermediate.clear();
+    m_oscString.clear();
+
+    m_escIntermediate = false;
+    m_escQuestionMark = false;
+}
+
+void EscapeSequenceParser::doEraseInDisplay(int mode) {
+#ifdef ENABLE_DEBUG
+    DBG() << "doEraseInDisplay mode=" << mode;
+#endif
+    if (m_widget) {
+        m_widget->eraseInDisplay(mode);
     }
 }
 
-void EscapeSequenceParser::storeParam() {
-    if (!m_paramString.isEmpty()) {
-        bool ok = false;
-        int param = m_paramString.toInt(&ok);
-        if (ok) {
-            m_params.push_back(param);
-        }
-        m_paramString.clear();
+void EscapeSequenceParser::doEraseInLine(int mode) {
+#ifdef ENABLE_DEBUG
+    DBG() << "doEraseInLine mode=" << mode;
+#endif
+    if (m_widget) {
+        m_widget->eraseInLine(mode);
     }
 }
 
-void EscapeSequenceParser::doFullReset() {
-    m_widget->setCurrentFg(7);
-    m_widget->setCurrentBg(0);
-    m_widget->setCurrentStyle(0);
+void EscapeSequenceParser::doSetMode(int p) {
+#ifdef ENABLE_DEBUG
+    DBG() << "doSetMode p=" << p;
+#endif
+    if (!m_widget)
+        return;
 
-    Cell blankCell;
-    m_widget->fillScreen(*m_widget->getMainScreen(), blankCell);
-    m_widget->fillScreen(*m_widget->getAlternateScreen(), blankCell);
+    switch (p) {
+        case 25:
+#ifdef ENABLE_DEBUG
+            DBG() << "Show cursor (not yet implemented in TerminalWidget)";
+#endif
+            break;
 
-    m_widget->setCursorPos(0, 0, true);
-    m_widget->useAlternateScreen(false);
+        case 47:
+        case 1047:
+        case 1049:
+            m_widget->useAlternateScreen(true);
+            break;
+
+        case 1000:
+            m_widget->setMouseEnabled(true);
+            break;
+
+        case 2004:
+#ifdef ENABLE_DEBUG
+            DBG() << "Bracketed paste mode ON (not yet implemented)";
+#endif
+            break;
+
+        default:
+#ifdef ENABLE_DEBUG
+            DBG() << "Unrecognized DEC Private Mode: " << p;
+#endif
+            break;
+    }
 }
 
-void EscapeSequenceParser::cursorUp(int n) {
-    m_widget->setCursorRow(m_widget->getCursorRow() - n);
-    m_widget->clampCursor();
-}
+void EscapeSequenceParser::doResetMode(int p) {
+#ifdef ENABLE_DEBUG
+    DBG() << "doResetMode p=" << p;
+#endif
+    if (!m_widget)
+        return;
 
-void EscapeSequenceParser::cursorDown(int n) {
-    m_widget->setCursorRow(m_widget->getCursorRow() + n);
-    m_widget->clampCursor();
-}
+    switch (p) {
+        case 25:
+#ifdef ENABLE_DEBUG
+            DBG() << "Hide cursor (not yet implemented in TerminalWidget)";
+#endif
+            break;
 
-void EscapeSequenceParser::cursorRight(int n) {
-    m_widget->setCursorCol(m_widget->getCursorCol() + n);
-    m_widget->clampCursor();
-}
+        case 47:
+        case 1047:
+        case 1049:
+            m_widget->useAlternateScreen(false);
+            break;
 
-void EscapeSequenceParser::cursorLeft(int n) {
-    m_widget->setCursorCol(m_widget->getCursorCol() - n);
-    m_widget->clampCursor();
+        case 1000:
+            m_widget->setMouseEnabled(false);
+            break;
+
+        case 2004:
+#ifdef ENABLE_DEBUG
+            DBG() << "Bracketed paste mode OFF (not yet implemented)";
+#endif
+            break;
+
+        default:
+#ifdef ENABLE_DEBUG
+            DBG() << "Unrecognized DEC Private Mode reset: " << p;
+#endif
+            break;
+    }
 }

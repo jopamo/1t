@@ -1,11 +1,17 @@
-// debug.h
-#ifndef DEBUG_H
-#define DEBUG_H
-
+#pragma once
+#include <QLoggingCategory>
 #include <QDebug>
 
-extern bool g_debug;
+extern bool g_debugMode;
 
-void enableDebug();
+Q_DECLARE_LOGGING_CATEGORY(oneTermDbg)
 
-#endif  // DEBUG_H
+#ifdef DEBUG_LOGGING
+#define DBG()         \
+    if (!g_debugMode) \
+        ;             \
+    else              \
+        qCDebug(oneTermDbg)
+#else
+#define DBG() ;
+#endif
