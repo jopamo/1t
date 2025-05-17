@@ -687,6 +687,8 @@ void TerminalWidget::setTerminalSize(int rows, int cols) {
         ws.ws_col = cols;
         ioctl(m_ptyMaster, TIOCSWINSZ, &ws);
     }
+
+    clampCursor();
     viewport()->update();
 }
 
