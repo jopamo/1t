@@ -139,6 +139,7 @@ class TerminalWidget : public QAbstractScrollArea {
     void safeWriteToPty(const QByteArray& bytes);
     QByteArray keyEventToAnsiSequence(QKeyEvent*);
     void invalidateCell(int row, int col);
+    void copyBuffer(const ScreenBuffer& src, ScreenBuffer& dst, int rows, int cols, const Cell& blank);
 
     std::unique_ptr<ScreenBuffer> m_mainScreen;
     std::unique_ptr<ScreenBuffer> m_alternateScreen;
