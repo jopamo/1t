@@ -641,6 +641,21 @@ void TerminalWidget::fillScreen(ScreenBuffer& buf, const Cell& blank) {
     }
 }
 
+void TerminalWidget::copyBuffer(const ScreenBuffer& src, ScreenBuffer& dst, int rows, int cols, const Cell& blank) {
+    int copyRows = std::min(rows, src.rows());
+    int copyCols = std::min(cols, src.cols());
+    for (int r = 0; r < copyRows; ++r) {
+        for (int c = 0; c < copyCols; ++c) {
+            dst.cell(r, c) = src.cell(r, c);
+        }
+    }
+    for (int r = copyRows; r < rows; ++r) {
+        for (int c = 0; c < cols; ++c) {
+            dst.cell(r, c) = blank;
+        }
+    }
+}
+
 void TerminalWidget::setTerminalSize(int rows, int cols) {
 #ifdef ENABLE_DEBUG
     DBG() << "setTerminalSize rows=" << rows << "cols=" << cols;
@@ -654,32 +669,9 @@ void TerminalWidget::setTerminalSize(int rows, int cols) {
     m_mainScreen->resize(rows, cols);
     m_alternateScreen->resize(rows, cols);
 
-    int copyRows = std::min(rows, oldMain.rows());
-    int copyCols = std::min(cols, oldMain.cols());
-    for (int r = 0; r < copyRows; ++r) {
-        for (int c = 0; c < copyCols; ++c) {
-            m_mainScreen->cell(r, c) = oldMain.cell(r, c);
-        }
-    }
     Cell blankCell = makeCellForCurrentAttr();
-    for (int r = copyRows; r < rows; ++r) {
-        for (int c = 0; c < cols; ++c) {
-            m_mainScreen->cell(r, c) = blankCell;
-        }
-    }
-
-    copyRows = std::min(rows, oldAlternate.rows());
-    copyCols = std::min(cols, oldAlternate.cols());
-    for (int r = 0; r < copyRows; ++r) {
-        for (int c = 0; c < copyCols; ++c) {
-            m_alternateScreen->cell(r, c) = oldAlternate.cell(r, c);
-        }
-    }
-    for (int r = copyRows; r < rows; ++r) {
-        for (int c = 0; c < cols; ++c) {
-            m_alternateScreen->cell(r, c) = blankCell;
-        }
-    }
+    copyBuffer(oldMain, *m_mainScreen, rows, cols, blankCell);
+    copyBuffer(oldAlternate, *m_alternateScreen, rows, cols, blankCell);
 
     m_scrollRegionTop = 0;
     m_scrollRegionBottom = rows - 1;
