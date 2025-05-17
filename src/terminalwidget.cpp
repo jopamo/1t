@@ -668,6 +668,19 @@ void TerminalWidget::setTerminalSize(int rows, int cols) {
         }
     }
 
+    copyRows = std::min(rows, oldAlternate.rows());
+    copyCols = std::min(cols, oldAlternate.cols());
+    for (int r = 0; r < copyRows; ++r) {
+        for (int c = 0; c < copyCols; ++c) {
+            m_alternateScreen->cell(r, c) = oldAlternate.cell(r, c);
+        }
+    }
+    for (int r = copyRows; r < rows; ++r) {
+        for (int c = 0; c < cols; ++c) {
+            m_alternateScreen->cell(r, c) = blankCell;
+        }
+    }
+
     m_scrollRegionTop = 0;
     m_scrollRegionBottom = rows - 1;
 
