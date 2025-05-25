@@ -623,3 +623,18 @@ void EscapeSequenceParser::doResetMode(int p) {
             break;
     }
 }
+
+const char* EscapeSequenceParser::stateName(State state) {
+    switch (state) {
+        case State::Ground: return "Ground";
+        case State::Escape: return "Escape";
+        case State::CsiEntry: return "CsiEntry";
+        case State::CsiParam: return "CsiParam";
+        case State::CsiIntermediate: return "CsiIntermediate";
+        case State::CsiIgnore: return "CsiIgnore";
+        case State::OscString: return "OscString";
+        case State::SosPmApcString: return "SosPmApcString";
+        default: return "Unknown";
+    }
+}
+

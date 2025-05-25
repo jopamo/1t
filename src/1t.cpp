@@ -18,6 +18,8 @@
 #include <sys/wait.h>
 #include <unistd.h>
 
+bool g_debugMode = false;
+
 OneTerm::OneTerm(QWidget* parent)
     : QWidget(parent),
       m_terminalWidget(new TerminalWidget(this)),
@@ -45,7 +47,7 @@ OneTerm::~OneTerm() {
 #ifdef ENABLE_DEBUG
         DBG() << "Waiting on shell PID:" << m_shellPid;
 #endif
-        ::waitpid(m_shellPid, nullptr, WNOHANG);
+        ::waitpid(m_shellPid, nullptr, WNOHANG); // Ensure we don't block
     }
 }
 
@@ -70,8 +72,9 @@ void OneTerm::launchShell(const char* shellPath) {
     }
     if (pid == 0) {
         ::close(masterFD);
-        setsid();
+        setsid();  // Create a new session
         if (ioctl(slaveFD, TIOCSCTTY, 0) < 0) {
+            qWarning() << "Failed to set controlling terminal:" << strerror(errno);
             _exit(127);
         }
         dup2(slaveFD, STDIN_FILENO);
@@ -79,8 +82,10 @@ void OneTerm::launchShell(const char* shellPath) {
         dup2(slaveFD, STDERR_FILENO);
         ::close(slaveFD);
 
-        execl(shellPath, shellPath, "-i", static_cast<char*>(nullptr));
-        _exit(127);
+        if (execl(shellPath, shellPath, "-i", static_cast<char*>(nullptr)) == -1) {
+            qWarning() << "execl failed:" << strerror(errno);
+            _exit(127);  // Exit immediately if execl fails
+        }
     }
 
     ::close(slaveFD);
@@ -114,7 +119,7 @@ void OneTerm::readFromPty() {
 #ifdef ENABLE_DEBUG
             DBG() << "PTY EOF, waiting on shell...";
 #endif
-            ::waitpid(m_shellPid, nullptr, 0);
+            ::waitpid(m_shellPid, nullptr, 0); // Wait for the child process to exit
             m_notifier->setEnabled(false);
             break;
         }
@@ -124,7 +129,7 @@ void OneTerm::readFromPty() {
             break;
         }
         else {
-            break;
+            break;  // Exit loop when no more data is available
         }
     }
 }
@@ -143,12 +148,21 @@ int main(int argc, char* argv[]) {
 
     app.setWindowIcon(QIcon(QStringLiteral("/usr/share/icons/hicolor/256x256/apps/1t.png")));
 
+    // Enable debug logging if DEBUG is defined
+#ifdef ENABLE_DEBUG
+    g_debugMode = true;
+    qCDebug(oneTermDbg) << "Debugging enabled";  // Output to the debug channel
+    QLoggingCategory::setFilterRules("1t.debug=true");  // Enable the '1t.debug' category for logging
+#else
+    g_debugMode = false;
+#endif
+
     OneTerm term;
     term.resize(1200, 300);
     term.show();
 
 #ifdef ENABLE_DEBUG
-    DBG() << "Launching shell path:" << "/bin/bash";
+    DBG() << "Launching shell path:" << "/bin/bash";  // Log the shell path
 #endif
     term.launchShell("/bin/bash");
 
