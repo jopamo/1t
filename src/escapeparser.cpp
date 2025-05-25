@@ -399,6 +399,20 @@ void EscapeSequenceParser::csiDispatch(unsigned char finalByte) {
             break;
         }
 
+        case 'G': {
+            int col = std::clamp(P(0, 1) - 1, 0, cols - 1);
+            m_widget->setCursorPos(curR, col, false);
+            break;
+        }
+
+        case 'H':
+        case 'f': {
+            int row = std::clamp(P(0, 1) - 1, 0, rows - 1);
+            int col = std::clamp(P(1, 1) - 1, 0, cols - 1);
+            m_widget->setCursorPos(row, col, false);
+            break;
+        }
+
         case 'J':
             doEraseInDisplay(P(0, 0));
             break;
