@@ -46,23 +46,19 @@ TerminalWidget::TerminalWidget(QWidget* parent)
       m_hasSelection(false),
       m_ptyMaster(-1),
       m_shellPid(-1) {
-
-    // Set default font if not set in application
     QFont mainFont = QApplication::font();
     if (mainFont.family().isEmpty()) {
         mainFont.setFamily("Source Code Pro");
     }
-    mainFont.setPointSize(10);  // Default font size can be adjustable
+    mainFont.setPointSize(10);
 
     mainFont.setStyleHint(QFont::Monospace, QFont::PreferDefault);
     QFont::insertSubstitution("Source Code Pro", "Noto Color Emoji");
     setFont(mainFont);
 
-    // Dynamically calculate character width and height based on font
     m_charWidth = fontMetrics().horizontalAdvance(QChar('M'));
     m_charHeight = fontMetrics().height();
 
-    // Adjust terminal size based on widget size
     int defaultRows = height() / m_charHeight;
     int defaultCols = width() / m_charWidth;
 
@@ -73,8 +69,7 @@ TerminalWidget::TerminalWidget(QWidget* parent)
     setMouseTracking(true);
 
 #ifdef ENABLE_DEBUG
-    DBG() << "TerminalWidget created with rows=" << defaultRows
-          << " cols=" << defaultCols
+    DBG() << "TerminalWidget created with rows=" << defaultRows << " cols=" << defaultCols
           << " charWidth=" << m_charWidth << " charHeight=" << m_charHeight;
 #endif
 }
@@ -86,7 +81,6 @@ TerminalWidget::~TerminalWidget() {
 }
 
 QSize TerminalWidget::sizeHint() const {
-    // Dynamically calculate the width and height based on terminal size and font size
     int w = currentBuffer().cols() * m_charWidth + verticalScrollBar()->sizeHint().width();
     int h = currentBuffer().rows() * m_charHeight;
 
@@ -97,16 +91,14 @@ QSize TerminalWidget::sizeHint() const {
 }
 
 void TerminalWidget::resizeEvent(QResizeEvent* event) {
-    // Calculate the new number of rows and columns based on widget size
     int newCols = std::max(1, width() / m_charWidth);
     int newRows = std::max(1, height() / m_charHeight);
 
-    // If the size has changed, update the screen buffer dimensions
     if (newCols != currentBuffer().cols() || newRows != currentBuffer().rows()) {
 #ifdef ENABLE_DEBUG
         DBG() << "resizeEvent newRows=" << newRows << " newCols=" << newCols;
 #endif
-        setTerminalSize(newRows, newCols);  // Adjust the terminal size accordingly
+        setTerminalSize(newRows, newCols);
     }
 
     QAbstractScrollArea::resizeEvent(event);
@@ -116,25 +108,22 @@ void TerminalWidget::paintEvent(QPaintEvent* ev) {
     QPainter p(viewport());
     const QRegion clip = ev->region();
     p.setClipRegion(clip);
-    p.fillRect(clip.boundingRect(), Qt::black);  // Fill background with black
+    p.fillRect(clip.boundingRect(), Qt::black);
 
     const int firstVisible = verticalScrollBar()->value();
     const int rowsOnScreen = height() / m_charHeight;
     const int cols = currentBuffer().cols();
     const int totalLines = int(m_scrollbackBuffer.size()) + currentBuffer().rows();
 
-    // Early exit if there’s nothing to draw
     if (totalLines == 0 || rowsOnScreen == 0 || cols == 0)
         return;
 
     const int lastVisible = std::min(firstVisible + rowsOnScreen, totalLines);
 
-    // Loop through the visible lines
     for (int absLine = firstVisible; absLine < lastVisible; ++absLine) {
         const int canvasRow = absLine - firstVisible;
         const int y = canvasRow * m_charHeight;
 
-        // Skip rendering if line is out of the visible region
         if (!clip.intersects(QRect(0, y, viewport()->width(), m_charHeight)))
             continue;
 
@@ -142,17 +131,14 @@ void TerminalWidget::paintEvent(QPaintEvent* ev) {
         if (!cells)
             continue;
 
-        // Render the characters for the current line
         for (int col = 0, x = 0; col < cols; ++col, x += m_charWidth) {
             drawCell(p, canvasRow, col, cells[col]);
         }
 
-        // Handle text selection highlighting
         if (m_hasSelection && absLine >= std::min(m_selAnchorAbsLine, m_selActiveAbsLine) &&
             absLine <= std::max(m_selAnchorAbsLine, m_selActiveAbsLine)) {
             int selStart = 0, selEnd = cols - 1;
 
-            // Calculate the selection range for the line
             if (absLine == m_selAnchorAbsLine) {
                 selStart = (m_selAnchorAbsLine < m_selActiveAbsLine) ? m_selAnchorCol : m_selActiveCol;
             }
@@ -160,17 +146,14 @@ void TerminalWidget::paintEvent(QPaintEvent* ev) {
                 selEnd = (m_selAnchorAbsLine > m_selActiveAbsLine) ? m_selAnchorCol : m_selActiveCol;
             }
 
-            // Ensure start column is smaller than end column
             if (selStart > selEnd)
                 std::swap(selStart, selEnd);
 
-            // Highlight the selected text
             p.fillRect(selStart * m_charWidth, y, (selEnd - selStart + 1) * m_charWidth, m_charHeight,
                        QColor(128, 128, 255, 128));
         }
     }
 
-    // Draw the cursor if it's visible
     if (m_showCursor)
         drawCursor(p, firstVisible, rowsOnScreen);
 }
@@ -179,21 +162,18 @@ void TerminalWidget::keyPressEvent(QKeyEvent* event) {
     auto mods = event->modifiers();
     QByteArray seq;
 
-    // Handle arrow keys (Up/Down for history search)
     if (event->key() == Qt::Key_Up || event->key() == Qt::Key_Down) {
         seq = (event->key() == Qt::Key_Up) ? "\x1B[A" : "\x1B[B";
         safeWriteToPty(seq);
         return;
     }
 
-    // Handle page up and page down (scroll the buffer)
     if (event->key() == Qt::Key_PageUp || event->key() == Qt::Key_PageDown) {
         seq = (event->key() == Qt::Key_PageUp) ? "\x1B[5~" : "\x1B[6~";
         safeWriteToPty(seq);
         return;
     }
 
-    // Handle Home and End (beginning or end of the line)
     if (event->key() == Qt::Key_Home) {
         seq = "\x1B[1~";
         safeWriteToPty(seq);
@@ -205,26 +185,23 @@ void TerminalWidget::keyPressEvent(QKeyEvent* event) {
         return;
     }
 
-    // Handle Delete key (delete character)
     if (event->key() == Qt::Key_Delete) {
         seq = "\x1B[3~";
         safeWriteToPty(seq);
         return;
     }
 
-    // Handle word movement (Ctrl + Left/Right arrows)
     if (event->key() == Qt::Key_Left) {
-        seq = "\x1B[Od";  // Backward word
+        seq = "\x1B[Od";
         safeWriteToPty(seq);
         return;
     }
     if (event->key() == Qt::Key_Right) {
-        seq = "\x1B[Oc";  // Forward word
+        seq = "\x1B[Oc";
         safeWriteToPty(seq);
         return;
     }
 
-    // Handle Ctrl + Shift + C/V for copy/paste
     if ((mods & Qt::ControlModifier) && (mods & Qt::ShiftModifier)) {
         if (event->key() == Qt::Key_C) {
             copyToClipboard();
@@ -236,19 +213,16 @@ void TerminalWidget::keyPressEvent(QKeyEvent* event) {
         }
     }
 
-    // Handle other keys (letters, numbers, etc.)
     if (QByteArray seq = keyEventToAnsiSequence(event); !seq.isEmpty()) {
         safeWriteToPty(seq);
         return;
     }
 
-    // Handle text input and send it to the terminal
     if (QString txt = event->text(); !txt.isEmpty()) {
         safeWriteToPty(txt.toUtf8());
         return;
     }
 
-    // Handle any other special keys (e.g., Enter, Backspace, etc.)
     handleSpecialKey(event->key());
 }
 
@@ -271,7 +245,7 @@ void TerminalWidget::updateScreen() {
 #ifdef ENABLE_DEBUG
     DBG() << "updateScreen triggered";
 #endif
-    // Trigger a repaint of the viewport (screen content)
+
     viewport()->update();
 }
 
@@ -284,16 +258,13 @@ void TerminalWidget::useAlternateScreen(bool alt) {
 
     m_inAlternateScreen = alt;
 
-    // Handle screen resize and content filling
     if (alt) {
         m_alternateScreen->resize(m_mainScreen->rows(), m_mainScreen->cols());
         fillScreen(*m_alternateScreen, makeCellForCurrentAttr());
-    } else {
-        // Switch back to the main screen if alternate screen is not needed
-        // Reset or clean up if necessary
+    }
+    else {
     }
 
-    // Update the viewport with the new content
     viewport()->update();
 }
 
@@ -301,20 +272,16 @@ void TerminalWidget::setScrollingRegion(int top, int bottom) {
 #ifdef ENABLE_DEBUG
     DBG() << "setScrollingRegion top=" << top << " bottom=" << bottom;
 #endif
-    // If top is greater than bottom, reset to full terminal range
+
     if (bottom < top) {
         m_scrollRegionTop = 0;
         m_scrollRegionBottom = currentBuffer().rows() - 1;
-    } else {
-        // Ensure the scroll region is within terminal bounds
+    }
+    else {
         m_scrollRegionTop = std::clamp(top, 0, currentBuffer().rows() - 1);
         m_scrollRegionBottom = std::clamp(bottom, 0, currentBuffer().rows() - 1);
     }
-
-    // Additional checks or updates can be added if needed
-    // For example, reset or initialize screen area after setting region
 }
-
 
 void TerminalWidget::lineFeed() {
 #ifdef ENABLE_DEBUG
@@ -373,9 +340,7 @@ void TerminalWidget::putChar(QChar ch) {
 #ifdef ENABLE_DEBUG
         DBG() << "Newline encountered. Moving cursor to the next line.";
 #endif
-        // Only call lineFeed if you want the cursor to move down
-        // Uncomment if you want to move cursor after newline
-        // lineFeed();
+
         m_cursorCol = 0;
         clampCursor();
         return;
@@ -392,8 +357,7 @@ void TerminalWidget::putChar(QChar ch) {
 #ifdef ENABLE_DEBUG
         DBG() << "Column limit reached. Wrapping text to the next line.";
 #endif
-        // Uncomment if you want to automatically move to the next line on column limit
-        // lineFeed();
+
         m_cursorCol = 0;
     }
 
@@ -411,7 +375,6 @@ void TerminalWidget::putChar(QChar ch) {
 
     ++m_cursorCol;
 }
-
 
 inline void TerminalWidget::invalidateCell(int row, int col) {
     if (row < 0 || col < 0)
