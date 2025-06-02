@@ -68,14 +68,14 @@ TerminalWidget::TerminalWidget(QWidget* parent)
     setFocusPolicy(Qt::StrongFocus);
     setMouseTracking(true);
 
-#ifdef ENABLE_DEBUG
+#if ENABLE_DEBUG
     DBG() << "TerminalWidget created with rows=" << defaultRows << " cols=" << defaultCols
           << " charWidth=" << m_charWidth << " charHeight=" << m_charHeight;
 #endif
 }
 
 TerminalWidget::~TerminalWidget() {
-#ifdef ENABLE_DEBUG
+#if ENABLE_DEBUG
     DBG() << "TerminalWidget destroyed";
 #endif
 }
@@ -84,7 +84,7 @@ QSize TerminalWidget::sizeHint() const {
     int w = currentBuffer().cols() * m_charWidth + verticalScrollBar()->sizeHint().width();
     int h = currentBuffer().rows() * m_charHeight;
 
-#ifdef ENABLE_DEBUG
+#if ENABLE_DEBUG
     DBG() << "sizeHint w=" << w << "h=" << h;
 #endif
     return QSize(w, h);
@@ -95,7 +95,7 @@ void TerminalWidget::resizeEvent(QResizeEvent* event) {
     int newRows = std::max(1, height() / m_charHeight);
 
     if (newCols != currentBuffer().cols() || newRows != currentBuffer().rows()) {
-#ifdef ENABLE_DEBUG
+#if ENABLE_DEBUG
         DBG() << "resizeEvent newRows=" << newRows << " newCols=" << newCols;
 #endif
         setTerminalSize(newRows, newCols);
@@ -227,7 +227,7 @@ void TerminalWidget::keyPressEvent(QKeyEvent* event) {
 }
 
 void TerminalWidget::setPtyInfo(int ptyMaster, pid_t shellPid) {
-#ifdef ENABLE_DEBUG
+#if ENABLE_DEBUG
     DBG() << "setPtyInfo ptyMaster=" << ptyMaster << " shellPid=" << shellPid;
 #endif
     m_ptyMaster = ptyMaster;
@@ -235,14 +235,14 @@ void TerminalWidget::setPtyInfo(int ptyMaster, pid_t shellPid) {
 }
 
 void TerminalWidget::setMouseEnabled(bool on) {
-#ifdef ENABLE_DEBUG
+#if ENABLE_DEBUG
     DBG() << "setMouseEnabled:" << (on ? "enabled" : "disabled");
 #endif
     m_mouseEnabled = on;
 }
 
 void TerminalWidget::updateScreen() {
-#ifdef ENABLE_DEBUG
+#if ENABLE_DEBUG
     DBG() << "updateScreen triggered";
 #endif
 
@@ -250,7 +250,7 @@ void TerminalWidget::updateScreen() {
 }
 
 void TerminalWidget::useAlternateScreen(bool alt) {
-#ifdef ENABLE_DEBUG
+#if ENABLE_DEBUG
     DBG() << "useAlternateScreen alt=" << alt;
 #endif
     if (m_inAlternateScreen == alt)
@@ -269,7 +269,7 @@ void TerminalWidget::useAlternateScreen(bool alt) {
 }
 
 void TerminalWidget::setScrollingRegion(int top, int bottom) {
-#ifdef ENABLE_DEBUG
+#if ENABLE_DEBUG
     DBG() << "setScrollingRegion top=" << top << " bottom=" << bottom;
 #endif
 
@@ -284,7 +284,7 @@ void TerminalWidget::setScrollingRegion(int top, int bottom) {
 }
 
 void TerminalWidget::lineFeed() {
-#ifdef ENABLE_DEBUG
+#if ENABLE_DEBUG
     DBG() << "lineFeed at row=" << m_cursorRow;
 #endif
 
@@ -298,13 +298,13 @@ void TerminalWidget::lineFeed() {
 
     clampCursor();
 
-#ifdef ENABLE_DEBUG
+#if ENABLE_DEBUG
     DBG() << "Updated cursor position: row=" << m_cursorRow;
 #endif
 }
 
 void TerminalWidget::reverseLineFeed() {
-#ifdef ENABLE_DEBUG
+#if ENABLE_DEBUG
     DBG() << "reverseLineFeed at row=" << m_cursorRow;
 #endif
 
@@ -317,18 +317,18 @@ void TerminalWidget::reverseLineFeed() {
 
     clampCursor();
 
-#ifdef ENABLE_DEBUG
+#if ENABLE_DEBUG
     DBG() << "Updated cursor position: row=" << m_cursorRow;
 #endif
 }
 
 void TerminalWidget::putChar(QChar ch) {
-#ifdef ENABLE_DEBUG
+#if ENABLE_DEBUG
     DBG() << "putChar: " << ch;
 #endif
 
     if (ch == u'\r') {
-#ifdef ENABLE_DEBUG
+#if ENABLE_DEBUG
         DBG() << "Carriage return encountered. Resetting column to 0.";
 #endif
         m_cursorCol = 0;
@@ -337,7 +337,7 @@ void TerminalWidget::putChar(QChar ch) {
     }
 
     if (ch == u'\n') {
-#ifdef ENABLE_DEBUG
+#if ENABLE_DEBUG
         DBG() << "Newline encountered. Moving cursor to the next line.";
 #endif
 
@@ -347,14 +347,14 @@ void TerminalWidget::putChar(QChar ch) {
     }
 
     if (!ch.isPrint() || ch == u'\x7F' || ch.isHighSurrogate() || ch.isLowSurrogate()) {
-#ifdef ENABLE_DEBUG
+#if ENABLE_DEBUG
         DBG() << "Non-printable character skipped: " << ch;
 #endif
         return;
     }
 
     if (m_cursorCol >= currentBuffer().cols()) {
-#ifdef ENABLE_DEBUG
+#if ENABLE_DEBUG
         DBG() << "Column limit reached. Wrapping text to the next line.";
 #endif
 
@@ -364,7 +364,7 @@ void TerminalWidget::putChar(QChar ch) {
     Cell& cell = currentBuffer().cell(m_cursorRow, m_cursorCol);
     cell.ch = ch;
 
-#ifdef ENABLE_DEBUG
+#if ENABLE_DEBUG
     DBG() << "Cell updated at row=" << m_cursorRow << " col=" << m_cursorCol << " with char=" << ch;
 #endif
     cell.fg = m_currentFg;
@@ -393,7 +393,7 @@ inline void TerminalWidget::invalidateCell(int row, int col) {
 }
 
 void TerminalWidget::setCursorPos(int r, int c, bool doClamp) {
-#ifdef ENABLE_DEBUG
+#if ENABLE_DEBUG
     DBG() << "setCursorPos r=" << r << ", c=" << c << ", clamp=" << doClamp;
 #endif
 
@@ -414,7 +414,7 @@ void TerminalWidget::setCursorPos(int r, int c, bool doClamp) {
 }
 
 void TerminalWidget::saveCursorPos() {
-#ifdef ENABLE_DEBUG
+#if ENABLE_DEBUG
     DBG() << "saveCursorPos row=" << m_cursorRow << ", col=" << m_cursorCol;
 #endif
     m_savedCursorRow = m_cursorRow;
@@ -422,7 +422,7 @@ void TerminalWidget::saveCursorPos() {
 }
 
 void TerminalWidget::restoreCursorPos() {
-#ifdef ENABLE_DEBUG
+#if ENABLE_DEBUG
     DBG() << "restoreCursorPos to row=" << m_savedCursorRow << ", col=" << m_savedCursorCol;
 #endif
     m_cursorRow = m_savedCursorRow;
@@ -431,14 +431,14 @@ void TerminalWidget::restoreCursorPos() {
 }
 
 void TerminalWidget::clampCursor() {
-#ifdef ENABLE_DEBUG
+#if ENABLE_DEBUG
     DBG() << "Clamping cursor: row=" << m_cursorRow << ", col=" << m_cursorCol;
 #endif
 
     m_cursorRow = std::clamp(m_cursorRow, 0, currentBuffer().rows() - 1);
     m_cursorCol = std::clamp(m_cursorCol, 0, currentBuffer().cols() - 1);
 
-#ifdef ENABLE_DEBUG
+#if ENABLE_DEBUG
     DBG() << "Clamped cursor: row=" << m_cursorRow << ", col=" << m_cursorCol;
 #endif
 }
@@ -450,7 +450,7 @@ void TerminalWidget::clampLineCol(int& line, int& col) {
 }
 
 void TerminalWidget::deleteChars(int n) {
-#ifdef ENABLE_DEBUG
+#if ENABLE_DEBUG
     DBG() << "deleteChars n=" << n << "row=" << m_cursorRow << "col=" << m_cursorCol;
 #endif
 
@@ -469,7 +469,7 @@ void TerminalWidget::deleteChars(int n) {
 }
 
 void TerminalWidget::eraseChars(int n) {
-#ifdef ENABLE_DEBUG
+#if ENABLE_DEBUG
     DBG() << "eraseChars n=" << n << "row=" << m_cursorRow << "col=" << m_cursorCol;
 #endif
 
@@ -488,7 +488,7 @@ void TerminalWidget::eraseChars(int n) {
 }
 
 void TerminalWidget::insertChars(int n) {
-#ifdef ENABLE_DEBUG
+#if ENABLE_DEBUG
     DBG() << "insertChars n=" << n << "row=" << m_cursorRow << "col=" << m_cursorCol;
 #endif
 
@@ -504,6 +504,68 @@ void TerminalWidget::insertChars(int n) {
     }
 
     viewport()->update();
+}
+
+void TerminalWidget::deleteLines(int n) {
+#if ENABLE_DEBUG
+    DBG() << "deleteLines n=" << n << " row=" << m_cursorRow;
+#endif
+
+    int top = m_cursorRow;
+    int bottom = m_scrollRegionBottom;
+    int regionHeight = bottom - top + 1;
+    if (regionHeight <= 0 || n < 1)
+        return;
+
+    n = std::min(n, regionHeight);
+    int cols = currentBuffer().cols();
+    Cell* base = &currentBuffer().cell(top, 0);
+    if (regionHeight > n) {
+        std::memmove(base, base + n * cols, size_t(regionHeight - n) * size_t(cols) * sizeof(Cell));
+    }
+    for (int r = bottom - n + 1; r <= bottom; ++r) {
+        currentBuffer().fillRow(r, 0, cols, makeCellForCurrentAttr());
+    }
+
+    const int yTop = top * m_charHeight;
+    viewport()->scroll(0, -n * m_charHeight, QRect(0, yTop, viewport()->width(), regionHeight * m_charHeight));
+    viewport()->update(0, (bottom - n + 1) * m_charHeight, viewport()->width(), n * m_charHeight);
+}
+
+void TerminalWidget::insertLines(int n) {
+#if ENABLE_DEBUG
+    DBG() << "insertLines n=" << n << " row=" << m_cursorRow;
+#endif
+
+    int top = m_cursorRow;
+    int bottom = m_scrollRegionBottom;
+    int regionHeight = bottom - top + 1;
+    if (regionHeight <= 0 || n < 1)
+        return;
+
+    n = std::min(n, regionHeight);
+    int cols = currentBuffer().cols();
+    Cell* base = &currentBuffer().cell(top, 0);
+    if (regionHeight > n) {
+        std::memmove(base + n * cols, base, size_t(regionHeight - n) * size_t(cols) * sizeof(Cell));
+    }
+    for (int r = 0; r < n; ++r) {
+        currentBuffer().fillRow(top + r, 0, cols, makeCellForCurrentAttr());
+    }
+
+    const int yTop = top * m_charHeight;
+    viewport()->scroll(0, +n * m_charHeight, QRect(0, yTop, viewport()->width(), regionHeight * m_charHeight));
+    viewport()->update(0, yTop, viewport()->width(), n * m_charHeight);
+}
+
+void TerminalWidget::scrollUpLines(int n) {
+    for (int i = 0; i < n; ++i)
+        scrollUp(m_scrollRegionTop, m_scrollRegionBottom);
+}
+
+void TerminalWidget::scrollDownLines(int n) {
+    for (int i = 0; i < n; ++i)
+        scrollDown(m_scrollRegionTop, m_scrollRegionBottom);
 }
 
 void TerminalWidget::drawCursor(QPainter& p, int firstVisibleLine, int visibleRows) {
@@ -529,7 +591,7 @@ void TerminalWidget::drawCursor(QPainter& p, int firstVisibleLine, int visibleRo
 }
 
 void TerminalWidget::eraseInLine(int mode) {
-#ifdef ENABLE_DEBUG
+#if ENABLE_DEBUG
     DBG() << "eraseInLine mode=" << mode << "cursorRow=" << m_cursorRow;
 #endif
 
@@ -570,7 +632,7 @@ void TerminalWidget::eraseInLine(int mode) {
 }
 
 void TerminalWidget::eraseInDisplay(int mode) {
-#ifdef ENABLE_DEBUG
+#if ENABLE_DEBUG
     DBG() << "eraseInDisplay mode=" << mode << "cursorRow=" << m_cursorRow;
 #endif
 
@@ -618,7 +680,7 @@ inline void TerminalWidget::maybeAdjustScrollBar(int deltaLines) {
 }
 
 void TerminalWidget::scrollUp(int top, int bottom) {
-#ifdef ENABLE_DEBUG
+#if ENABLE_DEBUG
     DBG() << "scrollUp top=" << top << "bottom=" << bottom;
 #endif
 
@@ -650,7 +712,7 @@ void TerminalWidget::scrollUp(int top, int bottom) {
 }
 
 void TerminalWidget::scrollDown(int top, int bottom) {
-#ifdef ENABLE_DEBUG
+#if ENABLE_DEBUG
     DBG() << "scrollDown top=" << top << "bottom=" << bottom;
 #endif
 
@@ -682,7 +744,7 @@ const ScreenBuffer& TerminalWidget::currentBuffer() const {
 }
 
 void TerminalWidget::fillScreen(ScreenBuffer& buf, const Cell& blank) {
-#ifdef ENABLE_DEBUG
+#if ENABLE_DEBUG
     DBG() << "fillScreen rows=" << buf.rows() << "cols=" << buf.cols();
 #endif
     for (int r = 0; r < buf.rows(); ++r) {
@@ -706,7 +768,7 @@ void TerminalWidget::copyBuffer(const ScreenBuffer& src, ScreenBuffer& dst, int 
 }
 
 void TerminalWidget::setTerminalSize(int rows, int cols) {
-#ifdef ENABLE_DEBUG
+#if ENABLE_DEBUG
     DBG() << "setTerminalSize rows=" << rows << "cols=" << cols;
 #endif
     if (m_mainScreen->rows() == rows && m_mainScreen->cols() == cols)
@@ -785,11 +847,10 @@ QColor TerminalWidget::ansiIndexToColor(int idx, bool bold) {
 }
 
 inline void TerminalWidget::drawCell(QPainter& p, int canvasRow, int col, const Cell& cell) {
-    if (cell.ch.isNull() || !cell.ch.isPrint() || cell.ch == ' ') {
+    if (cell.ch.isNull())
         return;
-    }
 
-#ifdef ENABLE_DEBUG
+#if ENABLE_DEBUG
     DBG() << "Rendering character: " << cell.ch;
 #endif
 
@@ -807,10 +868,11 @@ inline void TerminalWidget::drawCell(QPainter& p, int canvasRow, int col, const 
         std::swap(fg, bg);
 
     p.fillRect(x, y, m_charWidth, m_charHeight, bg);
-    p.setPen(fg);
-
-    int baseline = y + fontMetrics().ascent();
-    p.drawText(x, baseline, QString(cell.ch));
+    if (cell.ch.isPrint() && cell.ch != ' ') {
+        p.setPen(fg);
+        int baseline = y + fontMetrics().ascent();
+        p.drawText(x, baseline, QString(cell.ch));
+    }
 
     if (isUnderline) {
         int underlineY = y + fontMetrics().underlinePos();
@@ -819,12 +881,12 @@ inline void TerminalWidget::drawCell(QPainter& p, int canvasRow, int col, const 
 }
 
 void TerminalWidget::selectWordAtPosition(int row, int col) {
-#ifdef ENABLE_DEBUG
+#if ENABLE_DEBUG
     DBG() << "selectWordAtPosition row=" << row << " col=" << col;
 #endif
     const Cell* cells = getCellsAtAbsoluteLine(row);
     if (!cells) {
-#ifdef ENABLE_DEBUG
+#if ENABLE_DEBUG
         DBG() << "No cells found at row=" << row;
 #endif
         return;
@@ -837,7 +899,7 @@ void TerminalWidget::selectWordAtPosition(int row, int col) {
     while (endCol < currentBuffer().cols() - 1 && !cells[endCol + 1].ch.isSpace())
         endCol++;
 
-#ifdef ENABLE_DEBUG
+#if ENABLE_DEBUG
     DBG() << "Word selection from col=" << startCol << " to col=" << endCol;
 #endif
 
@@ -847,14 +909,14 @@ void TerminalWidget::selectWordAtPosition(int row, int col) {
     m_selActiveCol = endCol;
     m_hasSelection = true;
 
-#ifdef ENABLE_DEBUG
+#if ENABLE_DEBUG
     DBG() << "Selection anchor set to row=" << m_selAnchorAbsLine << " col=" << m_selAnchorCol;
 #endif
     viewport()->update();
 }
 
 void TerminalWidget::clearSelection() {
-#ifdef ENABLE_DEBUG
+#if ENABLE_DEBUG
     DBG() << "clearSelection called.";
 #endif
     m_hasSelection = false;
@@ -862,14 +924,14 @@ void TerminalWidget::clearSelection() {
 }
 
 bool TerminalWidget::hasSelection() const {
-#ifdef ENABLE_DEBUG
+#if ENABLE_DEBUG
     DBG() << "hasSelection called.";
 #endif
     if (!m_hasSelection)
         return false;
 
     if (m_selAnchorAbsLine == m_selActiveAbsLine && m_selAnchorCol == m_selActiveCol) {
-#ifdef ENABLE_DEBUG
+#if ENABLE_DEBUG
         DBG() << "Selection is degenerate (same anchor and active points), returning false.";
 #endif
         return false;
@@ -878,12 +940,12 @@ bool TerminalWidget::hasSelection() const {
 }
 
 QString TerminalWidget::selectedText() const {
-#ifdef ENABLE_DEBUG
+#if ENABLE_DEBUG
     DBG() << "selectedText called.";
 #endif
 
     if (!hasSelection()) {
-#ifdef ENABLE_DEBUG
+#if ENABLE_DEBUG
         DBG() << "No selection found.";
 #endif
         return QString();
@@ -895,14 +957,14 @@ QString TerminalWidget::selectedText() const {
     QStringList lines;
     lines.reserve(endLine - startLine + 1);
 
-#ifdef ENABLE_DEBUG
+#if ENABLE_DEBUG
     DBG() << "Extracting selected text from lines " << startLine << " to " << endLine;
 #endif
 
     for (int absLine = startLine; absLine <= endLine; ++absLine) {
         const Cell* rowCells = getCellsAtAbsoluteLine(absLine);
         if (!rowCells) {
-#ifdef ENABLE_DEBUG
+#if ENABLE_DEBUG
             DBG() << "No cells found for line " << absLine;
 #endif
             continue;
@@ -929,12 +991,12 @@ QString TerminalWidget::selectedText() const {
 }
 
 bool TerminalWidget::isWithinLineSelection(int lineIndex, int col) const {
-#ifdef ENABLE_DEBUG
+#if ENABLE_DEBUG
     DBG() << "isWithinLineSelection called for line=" << lineIndex << " col=" << col;
 #endif
 
     if (!m_hasSelection) {
-#ifdef ENABLE_DEBUG
+#if ENABLE_DEBUG
         DBG() << "No selection active.";
 #endif
         return false;
@@ -943,7 +1005,7 @@ bool TerminalWidget::isWithinLineSelection(int lineIndex, int col) const {
     int startLine = std::min(m_selAnchorAbsLine, m_selActiveAbsLine);
     int endLine = std::max(m_selAnchorAbsLine, m_selActiveAbsLine);
     if (lineIndex < startLine || lineIndex > endLine) {
-#ifdef ENABLE_DEBUG
+#if ENABLE_DEBUG
         DBG() << "Line " << lineIndex << " is outside selection range.";
 #endif
         return false;
@@ -958,7 +1020,7 @@ bool TerminalWidget::isWithinLineSelection(int lineIndex, int col) const {
     if (lineStartCol > lineEndCol)
         std::swap(lineStartCol, lineEndCol);
 
-#ifdef ENABLE_DEBUG
+#if ENABLE_DEBUG
     DBG() << "Line selection range: startCol=" << lineStartCol << " endCol=" << lineEndCol;
 #endif
 
@@ -966,31 +1028,31 @@ bool TerminalWidget::isWithinLineSelection(int lineIndex, int col) const {
 }
 
 const Cell* TerminalWidget::getCellsAtAbsoluteLine(int absLine) const {
-#ifdef ENABLE_DEBUG
+#if ENABLE_DEBUG
     DBG() << "getCellsAtAbsoluteLine called for line=" << absLine;
 #endif
 
     if (absLine < int(m_scrollbackBuffer.size())) {
-#ifdef ENABLE_DEBUG
+#if ENABLE_DEBUG
         DBG() << "Fetching cells from scrollback buffer for line " << absLine;
 #endif
         return m_scrollbackBuffer[size_t(absLine)].data();
     }
     int offset = absLine - int(m_scrollbackBuffer.size());
     if (offset >= 0 && offset < currentBuffer().rows()) {
-#ifdef ENABLE_DEBUG
+#if ENABLE_DEBUG
         DBG() << "Fetching cells from current screen buffer for line " << absLine;
 #endif
         return &currentBuffer().cell(offset, 0);
     }
-#ifdef ENABLE_DEBUG
+#if ENABLE_DEBUG
     DBG() << "Line " << absLine << " is out of bounds.";
 #endif
     return nullptr;
 }
 
 void TerminalWidget::handleSpecialKey(int key) {
-#ifdef ENABLE_DEBUG
+#if ENABLE_DEBUG
     DBG() << "handleSpecialKey key=" << key;
 #endif
     if (m_ptyMaster < 0)
@@ -999,25 +1061,25 @@ void TerminalWidget::handleSpecialKey(int key) {
     switch (key) {
         case Qt::Key_Enter:
         case Qt::Key_Return:
-#ifdef ENABLE_DEBUG
+#if ENABLE_DEBUG
             DBG() << "Enter/Return key pressed, sending CR to PTY.";
 #endif
             safeWriteToPty("\r");
             break;
         case Qt::Key_Backspace:
-#ifdef ENABLE_DEBUG
+#if ENABLE_DEBUG
             DBG() << "Backspace key pressed, sending BS to PTY.";
 #endif
             safeWriteToPty("\x7F");
             break;
         case Qt::Key_Tab:
-#ifdef ENABLE_DEBUG
+#if ENABLE_DEBUG
             DBG() << "Tab key pressed, sending Tab to PTY.";
 #endif
             safeWriteToPty("\t");
             break;
         default:
-#ifdef ENABLE_DEBUG
+#if ENABLE_DEBUG
             DBG() << "Unrecognized special key pressed: " << key;
 #endif
             break;
@@ -1025,11 +1087,11 @@ void TerminalWidget::handleSpecialKey(int key) {
 }
 
 void TerminalWidget::copyToClipboard() {
-#ifdef ENABLE_DEBUG
+#if ENABLE_DEBUG
     DBG() << "copyToClipboard called.";
 #endif
     if (!hasSelection()) {
-#ifdef ENABLE_DEBUG
+#if ENABLE_DEBUG
         DBG() << "No selection to copy.";
 #endif
         return;
@@ -1037,13 +1099,13 @@ void TerminalWidget::copyToClipboard() {
     QString sel = selectedText();
     QClipboard* cb = QGuiApplication::clipboard();
     cb->setText(sel, QClipboard::Clipboard);
-#ifdef ENABLE_DEBUG
+#if ENABLE_DEBUG
     DBG() << "Copied selected text to clipboard.";
 #endif
 }
 
 void TerminalWidget::pasteFromClipboard() {
-#ifdef ENABLE_DEBUG
+#if ENABLE_DEBUG
     DBG() << "pasteFromClipboard called.";
 #endif
     if (m_ptyMaster < 0)
@@ -1051,20 +1113,20 @@ void TerminalWidget::pasteFromClipboard() {
     QClipboard* cb = QGuiApplication::clipboard();
     QString text = cb->text(QClipboard::Clipboard);
     if (!text.isEmpty()) {
-#ifdef ENABLE_DEBUG
+#if ENABLE_DEBUG
         DBG() << "Pasting text from clipboard: " << text;
 #endif
         safeWriteToPty(text.toUtf8());
     }
     else {
-#ifdef ENABLE_DEBUG
+#if ENABLE_DEBUG
         DBG() << "Clipboard is empty.";
 #endif
     }
 }
 
 Cell TerminalWidget::makeCellForCurrentAttr() const {
-#ifdef ENABLE_DEBUG
+#if ENABLE_DEBUG
     DBG() << "Creating cell with current attributes.";
 #endif
     Cell blank;
@@ -1076,7 +1138,7 @@ Cell TerminalWidget::makeCellForCurrentAttr() const {
 }
 
 QByteArray TerminalWidget::keyEventToAnsiSequence(QKeyEvent* event) {
-#ifdef ENABLE_DEBUG
+#if ENABLE_DEBUG
     DBG() << "keyEventToAnsiSequence called for key: " << event->key();
 #endif
     switch (event->key()) {
@@ -1146,7 +1208,7 @@ void TerminalWidget::safeWriteToPty(const QByteArray& data) {
 }
 
 void TerminalWidget::fullReset() {
-#ifdef ENABLE_DEBUG
+#if ENABLE_DEBUG
     DBG() << "fullReset";
 #endif
     m_scrollbackBuffer.clear();
@@ -1165,14 +1227,14 @@ void TerminalWidget::fullReset() {
 }
 
 void TerminalWidget::handleBell() {
-#ifdef ENABLE_DEBUG
+#if ENABLE_DEBUG
     DBG() << "handleBell";
 #endif
     QApplication::beep();
 }
 
 void TerminalWidget::setSGR(const std::vector<int>& params) {
-#ifdef ENABLE_DEBUG
+#if ENABLE_DEBUG
     DBG() << "setSGR params size=" << params.size();
 #endif
     if (params.empty()) {
@@ -1271,7 +1333,7 @@ void TerminalWidget::setSGR(const std::vector<int>& params) {
                 }
                 break;
             default:
-#ifdef ENABLE_DEBUG
+#if ENABLE_DEBUG
                 DBG() << "Unknown SGR code" << p;
 #endif
                 break;
@@ -1280,7 +1342,7 @@ void TerminalWidget::setSGR(const std::vector<int>& params) {
 }
 
 void TerminalWidget::mousePressEvent(QMouseEvent* event) {
-#ifdef ENABLE_DEBUG
+#if ENABLE_DEBUG
     DBG() << "mousePressEvent pos=" << event->pos();
 #endif
     handleIfMouseEnabled(event, [=]() {
@@ -1321,7 +1383,7 @@ void TerminalWidget::mouseMoveEvent(QMouseEvent* event) {
 }
 
 void TerminalWidget::mouseReleaseEvent(QMouseEvent* event) {
-#ifdef ENABLE_DEBUG
+#if ENABLE_DEBUG
     DBG() << "mouseReleaseEvent pos=" << event->pos();
 #endif
     handleIfMouseEnabled(event, [=]() {

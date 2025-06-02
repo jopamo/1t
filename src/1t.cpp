@@ -37,14 +37,14 @@ OneTerm::~OneTerm() {
     }
 
     if (m_masterFD >= 0) {
-#ifdef ENABLE_DEBUG
+#if ENABLE_DEBUG
         DBG() << "Closing master FD:" << m_masterFD;
 #endif
         ::close(m_masterFD);
     }
 
     if (m_shellPid > 0) {
-#ifdef ENABLE_DEBUG
+#if ENABLE_DEBUG
         DBG() << "Waiting on shell PID:" << m_shellPid;
 #endif
         ::waitpid(m_shellPid, nullptr, WNOHANG);
@@ -57,7 +57,7 @@ void OneTerm::launchShell(const char* shellPath) {
         qWarning() << "openpty failed:" << strerror(errno);
         return;
     }
-#ifdef ENABLE_DEBUG
+#if ENABLE_DEBUG
     DBG() << "openpty master FD:" << masterFD << "slave FD:" << slaveFD;
 #endif
 
@@ -82,6 +82,8 @@ void OneTerm::launchShell(const char* shellPath) {
         dup2(slaveFD, STDERR_FILENO);
         ::close(slaveFD);
 
+        ::setenv("TERM", "xterm-256color", 0);
+
         if (execl(shellPath, shellPath, "-i", static_cast<char*>(nullptr)) == -1) {
             qWarning() << "execl failed:" << strerror(errno);
             _exit(127);
@@ -92,7 +94,7 @@ void OneTerm::launchShell(const char* shellPath) {
     m_shellPid = pid;
     m_masterFD = masterFD;
 
-#ifdef ENABLE_DEBUG
+#if ENABLE_DEBUG
     DBG() << "Launched shell PID:" << m_shellPid << "masterFD:" << m_masterFD;
 #endif
 
@@ -110,13 +112,13 @@ void OneTerm::readFromPty() {
     for (;;) {
         ssize_t n = ::read(m_masterFD, buf, sizeof(buf));
         if (n > 0) {
-#ifdef ENABLE_DEBUG
+#if ENABLE_DEBUG
             DBG() << "readFromPty got" << n << "bytes";
 #endif
             m_parser->feed(QByteArray(buf, n));
         }
         else if (n == 0) {
-#ifdef ENABLE_DEBUG
+#if ENABLE_DEBUG
             DBG() << "PTY EOF, waiting on shell...";
 #endif
             ::waitpid(m_shellPid, nullptr, 0);
@@ -136,7 +138,7 @@ void OneTerm::readFromPty() {
 
 void OneTerm::resizeEvent(QResizeEvent* e) {
     QWidget::resizeEvent(e);
-#ifdef ENABLE_DEBUG
+#if ENABLE_DEBUG
     DBG() << "OneTerm resized:" << e->size();
 #endif
 }
@@ -148,7 +150,7 @@ int main(int argc, char* argv[]) {
 
     app.setWindowIcon(QIcon(QStringLiteral("/usr/share/icons/hicolor/256x256/apps/1t.png")));
 
-#ifdef ENABLE_DEBUG
+#if ENABLE_DEBUG
     g_debugMode = true;
     qCDebug(oneTermDbg) << "Debugging enabled";
     QLoggingCategory::setFilterRules("1t.debug=true");
@@ -160,7 +162,7 @@ int main(int argc, char* argv[]) {
     term.resize(1200, 300);
     term.show();
 
-#ifdef ENABLE_DEBUG
+#if ENABLE_DEBUG
     DBG() << "Launching shell path:" << "/bin/bash";
 #endif
     term.launchShell("/bin/bash");

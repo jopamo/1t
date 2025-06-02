@@ -7,11 +7,16 @@ extern bool g_debugMode;
 Q_DECLARE_LOGGING_CATEGORY(oneTermDbg)
 
 #if ENABLE_DEBUG
-#define DBG()         \
-    if (!g_debugMode) \
-        ;             \
-    else              \
+#  define DBG()                                                             \
+    if (!g_debugMode)                                                      \
+        ;                                                                  \
+    else                                                                   \
         qCDebug(oneTermDbg)
 #else
-#define DBG() ;
+class NullDebugStream {
+public:
+    template <typename T> NullDebugStream &operator<<(const T &) { return *this; }
+};
+static inline NullDebugStream qNullDebugStream() { return {}; }
+#  define DBG() qNullDebugStream()
 #endif

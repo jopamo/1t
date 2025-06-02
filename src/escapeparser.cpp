@@ -16,14 +16,14 @@
 
 EscapeSequenceParser::EscapeSequenceParser(TerminalWidget* widget, QObject* parent)
     : QObject(parent), m_widget(widget) {
-#ifdef ENABLE_DEBUG
+#if ENABLE_DEBUG
     DBG() << "EscapeSequenceParser constructor";
 #endif
     resetStateMachine();
 }
 
 void EscapeSequenceParser::feed(const QByteArray& data) {
-#ifdef ENABLE_DEBUG
+#if ENABLE_DEBUG
     DBG() << "feed" << data.size() << "bytes";
 #endif
 
@@ -35,7 +35,7 @@ void EscapeSequenceParser::feed(const QByteArray& data) {
     flushTextBuffer();
 
     if (m_widget) {
-#ifdef ENABLE_DEBUG
+#if ENABLE_DEBUG
         DBG() << "calling updateScreen() after feed";
 #endif
         m_widget->updateScreen();
@@ -122,7 +122,7 @@ void EscapeSequenceParser::processByte(unsigned char b) {
                     m_state = State::Ground;
                     break;
                 default:
-#ifdef ENABLE_DEBUG
+#if ENABLE_DEBUG
                     DBG() << "Unrecognized ESC sequence: ESC " << char(b);
 #endif
                     m_state = State::Ground;
@@ -166,7 +166,7 @@ void EscapeSequenceParser::processByte(unsigned char b) {
             break;
     }
 
-#ifdef ENABLE_DEBUG
+#if ENABLE_DEBUG
     if (oldState != m_state) {
         DBG() << "processByte(" << int(b) << ") state transition: Ground -> " << stateName(oldState) << " -> "
               << stateName(m_state);
@@ -240,7 +240,7 @@ void EscapeSequenceParser::processCsiSubState(unsigned char b) {
             break;
     }
 
-#ifdef ENABLE_DEBUG
+#if ENABLE_DEBUG
     if (old != m_state) {
         DBG() << "processCsiSubState(" << int(b) << ") transition " << stateName(old) << " -> " << stateName(m_state);
     }
@@ -323,7 +323,7 @@ void EscapeSequenceParser::handleControlChar(unsigned char c0) {
         }
 
         default:
-#ifdef ENABLE_DEBUG
+#if ENABLE_DEBUG
             DBG() << "Unhandled control char: 0x" << std::hex << int(c0);
 #endif
             break;
@@ -331,7 +331,7 @@ void EscapeSequenceParser::handleControlChar(unsigned char c0) {
 }
 
 void EscapeSequenceParser::csiDispatch(unsigned char finalByte) {
-#ifdef ENABLE_DEBUG
+#if ENABLE_DEBUG
     DBG() << "csiDispatch finalByte=" << int(finalByte);
 #endif
 
@@ -349,7 +349,7 @@ void EscapeSequenceParser::csiDispatch(unsigned char finalByte) {
             int v = part.toInt(&ok);
 
             if (!ok || v < 0) {
-#ifdef ENABLE_DEBUG
+#if ENABLE_DEBUG
                 DBG() << "Invalid parameter in CSI sequence:" << part;
 #endif
                 params.push_back(0);
@@ -428,6 +428,18 @@ void EscapeSequenceParser::csiDispatch(unsigned char finalByte) {
         case '@':
             m_widget->insertChars(P(0, 1));
             break;
+        case 'L':
+            m_widget->insertLines(P(0, 1));
+            break;
+        case 'M':
+            m_widget->deleteLines(P(0, 1));
+            break;
+        case 'S':
+            m_widget->scrollUpLines(P(0, 1));
+            break;
+        case 'T':
+            m_widget->scrollDownLines(P(0, 1));
+            break;
 
         case 'm':
             m_widget->setSGR(params);
@@ -437,7 +449,7 @@ void EscapeSequenceParser::csiDispatch(unsigned char finalByte) {
             int top = std::clamp(P(0, 1) - 1, 0, rows - 1);
             int bottom = std::clamp(P(1, rows) - 1, 0, rows - 1);
             if (top > bottom) {
-#ifdef ENABLE_DEBUG
+#if ENABLE_DEBUG
                 DBG() << "Invalid scrolling region, swapping top/bottom.";
 #endif
                 std::swap(top, bottom);
@@ -447,7 +459,7 @@ void EscapeSequenceParser::csiDispatch(unsigned char finalByte) {
         }
 
         default:
-#ifdef ENABLE_DEBUG
+#if ENABLE_DEBUG
             DBG() << "Unsupported CSI finalByte:" << char(finalByte) << "params=" << params;
 #endif
             break;
@@ -458,7 +470,7 @@ void EscapeSequenceParser::csiDispatch(unsigned char finalByte) {
 }
 
 void EscapeSequenceParser::oscDispatch() {
-#ifdef ENABLE_DEBUG
+#if ENABLE_DEBUG
     DBG() << "oscDispatch";
 #endif
 
@@ -472,7 +484,7 @@ void EscapeSequenceParser::oscDispatch() {
 
     qsizetype sep = osc.indexOf(u';');
     if (sep < 0) {
-#ifdef ENABLE_DEBUG
+#if ENABLE_DEBUG
         DBG() << "Malformed OSC: missing semicolon";
 #endif
         return;
@@ -481,7 +493,7 @@ void EscapeSequenceParser::oscDispatch() {
     bool ok = false;
     int ps = osc.left(sep).toInt(&ok);
     if (!ok) {
-#ifdef ENABLE_DEBUG
+#if ENABLE_DEBUG
         DBG() << "Malformed OSC: cannot parse ps (before semicolon)";
 #endif
         return;
@@ -496,19 +508,19 @@ void EscapeSequenceParser::oscDispatch() {
             break;
 
         case 4:
-#ifdef ENABLE_DEBUG
+#if ENABLE_DEBUG
             DBG() << "OSC 4 (set color) not yet implemented. Param=" << pt;
 #endif
             break;
 
         case 8:
-#ifdef ENABLE_DEBUG
+#if ENABLE_DEBUG
             DBG() << "OSC 8 (hyperlink) not yet implemented. Param=" << pt;
 #endif
             break;
 
         default:
-#ifdef ENABLE_DEBUG
+#if ENABLE_DEBUG
             DBG() << "Ignoring unsupported OSC code: " << ps << ", params=" << pt;
 #endif
             break;
@@ -516,7 +528,7 @@ void EscapeSequenceParser::oscDispatch() {
 }
 
 void EscapeSequenceParser::resetStateMachine() {
-#ifdef ENABLE_DEBUG
+#if ENABLE_DEBUG
     DBG() << "resetStateMachine";
 #endif
     m_state = State::Ground;
@@ -531,7 +543,7 @@ void EscapeSequenceParser::resetStateMachine() {
 }
 
 void EscapeSequenceParser::doEraseInDisplay(int mode) {
-#ifdef ENABLE_DEBUG
+#if ENABLE_DEBUG
     DBG() << "doEraseInDisplay mode=" << mode;
 #endif
     if (m_widget) {
@@ -540,7 +552,7 @@ void EscapeSequenceParser::doEraseInDisplay(int mode) {
 }
 
 void EscapeSequenceParser::doEraseInLine(int mode) {
-#ifdef ENABLE_DEBUG
+#if ENABLE_DEBUG
     DBG() << "doEraseInLine mode=" << mode;
 #endif
     if (m_widget) {
@@ -549,7 +561,7 @@ void EscapeSequenceParser::doEraseInLine(int mode) {
 }
 
 void EscapeSequenceParser::doSetMode(int p) {
-#ifdef ENABLE_DEBUG
+#if ENABLE_DEBUG
     DBG() << "doSetMode p=" << p;
 #endif
     if (!m_widget)
@@ -557,7 +569,7 @@ void EscapeSequenceParser::doSetMode(int p) {
 
     switch (p) {
         case 25:
-#ifdef ENABLE_DEBUG
+#if ENABLE_DEBUG
             DBG() << "Show cursor (not yet implemented in TerminalWidget)";
 #endif
             break;
@@ -573,13 +585,13 @@ void EscapeSequenceParser::doSetMode(int p) {
             break;
 
         case 2004:
-#ifdef ENABLE_DEBUG
+#if ENABLE_DEBUG
             DBG() << "Bracketed paste mode ON (not yet implemented)";
 #endif
             break;
 
         default:
-#ifdef ENABLE_DEBUG
+#if ENABLE_DEBUG
             DBG() << "Unrecognized DEC Private Mode: " << p;
 #endif
             break;
@@ -587,7 +599,7 @@ void EscapeSequenceParser::doSetMode(int p) {
 }
 
 void EscapeSequenceParser::doResetMode(int p) {
-#ifdef ENABLE_DEBUG
+#if ENABLE_DEBUG
     DBG() << "doResetMode p=" << p;
 #endif
     if (!m_widget)
@@ -595,7 +607,7 @@ void EscapeSequenceParser::doResetMode(int p) {
 
     switch (p) {
         case 25:
-#ifdef ENABLE_DEBUG
+#if ENABLE_DEBUG
             DBG() << "Hide cursor (not yet implemented in TerminalWidget)";
 #endif
             break;
@@ -611,13 +623,13 @@ void EscapeSequenceParser::doResetMode(int p) {
             break;
 
         case 2004:
-#ifdef ENABLE_DEBUG
+#if ENABLE_DEBUG
             DBG() << "Bracketed paste mode OFF (not yet implemented)";
 #endif
             break;
 
         default:
-#ifdef ENABLE_DEBUG
+#if ENABLE_DEBUG
             DBG() << "Unrecognized DEC Private Mode reset: " << p;
 #endif
             break;
