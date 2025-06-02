@@ -506,6 +506,68 @@ void TerminalWidget::insertChars(int n) {
     viewport()->update();
 }
 
+void TerminalWidget::deleteLines(int n) {
+#ifdef ENABLE_DEBUG
+    DBG() << "deleteLines n=" << n << " row=" << m_cursorRow;
+#endif
+
+    int top = m_cursorRow;
+    int bottom = m_scrollRegionBottom;
+    int regionHeight = bottom - top + 1;
+    if (regionHeight <= 0 || n < 1)
+        return;
+
+    n = std::min(n, regionHeight);
+    int cols = currentBuffer().cols();
+    Cell* base = &currentBuffer().cell(top, 0);
+    if (regionHeight > n) {
+        std::memmove(base, base + n * cols, size_t(regionHeight - n) * size_t(cols) * sizeof(Cell));
+    }
+    for (int r = bottom - n + 1; r <= bottom; ++r) {
+        currentBuffer().fillRow(r, 0, cols, makeCellForCurrentAttr());
+    }
+
+    const int yTop = top * m_charHeight;
+    viewport()->scroll(0, -n * m_charHeight, QRect(0, yTop, viewport()->width(), regionHeight * m_charHeight));
+    viewport()->update(0, (bottom - n + 1) * m_charHeight, viewport()->width(), n * m_charHeight);
+}
+
+void TerminalWidget::insertLines(int n) {
+#ifdef ENABLE_DEBUG
+    DBG() << "insertLines n=" << n << " row=" << m_cursorRow;
+#endif
+
+    int top = m_cursorRow;
+    int bottom = m_scrollRegionBottom;
+    int regionHeight = bottom - top + 1;
+    if (regionHeight <= 0 || n < 1)
+        return;
+
+    n = std::min(n, regionHeight);
+    int cols = currentBuffer().cols();
+    Cell* base = &currentBuffer().cell(top, 0);
+    if (regionHeight > n) {
+        std::memmove(base + n * cols, base, size_t(regionHeight - n) * size_t(cols) * sizeof(Cell));
+    }
+    for (int r = 0; r < n; ++r) {
+        currentBuffer().fillRow(top + r, 0, cols, makeCellForCurrentAttr());
+    }
+
+    const int yTop = top * m_charHeight;
+    viewport()->scroll(0, +n * m_charHeight, QRect(0, yTop, viewport()->width(), regionHeight * m_charHeight));
+    viewport()->update(0, yTop, viewport()->width(), n * m_charHeight);
+}
+
+void TerminalWidget::scrollUpLines(int n) {
+    for (int i = 0; i < n; ++i)
+        scrollUp(m_scrollRegionTop, m_scrollRegionBottom);
+}
+
+void TerminalWidget::scrollDownLines(int n) {
+    for (int i = 0; i < n; ++i)
+        scrollDown(m_scrollRegionTop, m_scrollRegionBottom);
+}
+
 void TerminalWidget::drawCursor(QPainter& p, int firstVisibleLine, int visibleRows) {
     int cursorAbs = int(m_scrollbackBuffer.size()) + m_cursorRow;
     if (cursorAbs < firstVisibleLine || cursorAbs >= firstVisibleLine + visibleRows)
@@ -785,9 +847,8 @@ QColor TerminalWidget::ansiIndexToColor(int idx, bool bold) {
 }
 
 inline void TerminalWidget::drawCell(QPainter& p, int canvasRow, int col, const Cell& cell) {
-    if (cell.ch.isNull() || !cell.ch.isPrint() || cell.ch == ' ') {
+    if (cell.ch.isNull())
         return;
-    }
 
 #ifdef ENABLE_DEBUG
     DBG() << "Rendering character: " << cell.ch;
@@ -807,10 +868,11 @@ inline void TerminalWidget::drawCell(QPainter& p, int canvasRow, int col, const 
         std::swap(fg, bg);
 
     p.fillRect(x, y, m_charWidth, m_charHeight, bg);
-    p.setPen(fg);
-
-    int baseline = y + fontMetrics().ascent();
-    p.drawText(x, baseline, QString(cell.ch));
+    if (cell.ch.isPrint() && cell.ch != ' ') {
+        p.setPen(fg);
+        int baseline = y + fontMetrics().ascent();
+        p.drawText(x, baseline, QString(cell.ch));
+    }
 
     if (isUnderline) {
         int underlineY = y + fontMetrics().underlinePos();

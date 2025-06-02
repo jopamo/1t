@@ -94,6 +94,10 @@ class TerminalWidget : public QAbstractScrollArea {
     void deleteChars(int n);
     void eraseChars(int n);
     void insertChars(int n);
+    void deleteLines(int n);
+    void insertLines(int n);
+    void scrollUpLines(int n);
+    void scrollDownLines(int n);
 
     int getCursorRow() const noexcept { return m_cursorRow; }
     int getCursorCol() const noexcept { return m_cursorCol; }
