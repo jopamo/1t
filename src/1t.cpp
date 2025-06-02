@@ -82,6 +82,8 @@ void OneTerm::launchShell(const char* shellPath) {
         dup2(slaveFD, STDERR_FILENO);
         ::close(slaveFD);
 
+        ::setenv("TERM", "xterm-256color", 0);
+
         if (execl(shellPath, shellPath, "-i", static_cast<char*>(nullptr)) == -1) {
             qWarning() << "execl failed:" << strerror(errno);
             _exit(127);

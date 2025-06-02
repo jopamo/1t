@@ -428,6 +428,18 @@ void EscapeSequenceParser::csiDispatch(unsigned char finalByte) {
         case '@':
             m_widget->insertChars(P(0, 1));
             break;
+        case 'L':
+            m_widget->insertLines(P(0, 1));
+            break;
+        case 'M':
+            m_widget->deleteLines(P(0, 1));
+            break;
+        case 'S':
+            m_widget->scrollUpLines(P(0, 1));
+            break;
+        case 'T':
+            m_widget->scrollDownLines(P(0, 1));
+            break;
 
         case 'm':
             m_widget->setSGR(params);
